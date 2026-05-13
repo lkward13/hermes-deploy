@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import json
 from pathlib import Path
 
 
@@ -18,6 +19,13 @@ OUTPUTS = {
     "cron_jobs.json": ROOT / "cron" / "jobs.json",
 }
 
+SECRET_OUTPUTS = {
+    "HERMES_AUTH_JSON": ROOT / "auth.json",
+    "QBO_TOKENS_JSON": ROOT / "skills" / "qbo-invoicing" / "qbo_tokens.json",
+    "QBO_SECRETS_JSON": ROOT / "skills" / "qbo-invoicing" / "qbo_secrets.json",
+    "OAUTH_TOKENS_JSON": ROOT / "credentials" / "oauth_tokens.json",
+}
+
 DEFAULTS = {
     "AGENT_PERSONA_NAME": "Hermes",
     "AGENT_SUBAGENT_NAME": "Richard",
@@ -27,12 +35,36 @@ DEFAULTS = {
     "BUSINESS_NAME": "Client Business",
     "HERMES_HOME": str(ROOT),
     "HERMES_GATEWAY_TOKEN": "",
+    "HERMES_CODEX_BASE_URL": "",
     "OWNER_NAME": "Owner",
     "OWNER_PHONE": "",
     "OWNER_TELEGRAM_ID": "",
     "TELEGRAM_ALLOWED_USERS": "",
     "TELEGRAM_BOT_TOKEN": "",
     "TELEGRAM_OWNER_CHAT_ID": "",
+    "BOLDTRAIL_ACCESS_TOKEN": "",
+    "BOLDTRAIL_API_TOKEN": "",
+    "CLICKSEND_API_KEY": "",
+    "CLICKSEND_FROM_NUMBER": "",
+    "CLICKSEND_USERNAME": "",
+    "FACEBOOK_ACCESS_TOKEN": "",
+    "FB_FORM_ID": "",
+    "FB_PAGE_ACCESS_TOKEN": "",
+    "JOBBER_ACCESS_TOKEN": "",
+    "JOBBER_CLIENT_ID": "",
+    "JOBBER_CLIENT_SECRET": "",
+    "JOBBER_REFRESH_TOKEN": "",
+    "QBO_ACCESS_TOKEN": "",
+    "QBO_CLIENT_ID": "",
+    "QBO_CLIENT_SECRET": "",
+    "QBO_REALM_ID": "",
+    "QBO_REDIRECT_URI": "",
+    "QBO_REFRESH_TOKEN": "",
+    "PODIO_APP_ID": "",
+    "PODIO_CLIENT_ID": "",
+    "PODIO_CLIENT_SECRET": "",
+    "PODIO_PASSWORD": "",
+    "PODIO_USERNAME": "",
 }
 
 
@@ -41,6 +73,17 @@ def render(text: str) -> str:
     for key, value in values.items():
         text = text.replace("{{" + key + "}}", str(value))
     return text
+
+
+def write_secret_json(env_key: str, output_path: Path) -> None:
+    raw = os.environ.get(env_key, "").strip()
+    if not raw:
+        return
+
+    data = json.loads(raw)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(data, indent=2) + "\n")
+    output_path.chmod(0o600)
 
 
 def main() -> int:
@@ -53,6 +96,10 @@ def main() -> int:
     env_output = ROOT / ".env"
     env_output.write_text(render(env_template.read_text()))
     env_output.chmod(0o600)
+
+    for env_key, output_path in SECRET_OUTPUTS.items():
+        write_secret_json(env_key, output_path)
+
     return 0
 
 
