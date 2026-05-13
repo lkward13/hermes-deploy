@@ -1,0 +1,13 @@
+{
+  "clicksend-sms": {
+    "description": "Incoming SMS from ClickSend for lead auto-text",
+    "events": [],
+    "secret": "INSECURE_NO_AUTH",
+    "prompt": "INCOMING SMS REPLY. From: {from}, Body: \"{body}\", To: {to}.\n\nSTEP 1: If the sender is {{OWNER_PHONE}} ({{OWNER_NAME}}) or {{ADMIN_PHONE}} ({{ADMIN_NAME}}), this is an OWNER REPLY to an appointment approval request, NOT a new lead. Check pending_approval leads and handle accordingly (confirm or decline the appointment).\n\nSTEP 2: For all other numbers, first check if this lead is already being processed:\n  python3 {{HERMES_HOME}}/skills/lead-auto-text/lead_state.py lock --phone {from}\n  - If it returns ALREADY_LOCKED, STOP. Another {{AGENT_SUBAGENT_NAME}} is already handling this lead. Do nothing.\n  - If it returns LOCKED, proceed to delegate to {{AGENT_SUBAGENT_NAME}}.\n  - If it returns NOT_FOUND, this may be a new lead. Add them first, then lock and delegate.\n\nSTEP 3: Delegate to subagent {{AGENT_SUBAGENT_NAME}} using delegate_task. {{AGENT_SUBAGENT_NAME}} MUST unlock the lead when done:\n  python3 {{HERMES_HOME}}/skills/lead-auto-text/lead_state.py unlock --phone {from}\n\n{{AGENT_SUBAGENT_NAME}} checks all recent messages with check_sms.py so they will see all texts even if multiple came in.\nLead state: python3 {{HERMES_HOME}}/skills/lead-auto-text/lead_state.py get {from}\nSend reply: python3 {{HERMES_HOME}}/skills/lead-auto-text/send_sms.py --to {from} --body \"message\"",
+    "skills": [
+      "lead-auto-text"
+    ],
+    "deliver": "telegram",
+    "created_at": "2026-05-13T01:57:48Z"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "updated_at": null,
+  "platforms": {
+    "telegram": [
+      {
+        "id": "{{ADMIN_TELEGRAM_ID}}",
+        "name": "{{ADMIN_NAME}}",
+        "type": "dm",
+        "thread_id": null
+      },
+      {
+        "id": "{{OWNER_TELEGRAM_ID}}",
+        "name": "{{OWNER_NAME}}",
+        "type": "dm",
+        "thread_id": null
+      }
+    ],
+    "discord": [],
+    "whatsapp": [],
+    "slack": [],
+    "signal": [],
+    "sms": [],
+    "email": []
+  }
+}
