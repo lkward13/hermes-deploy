@@ -124,7 +124,7 @@ cd "${HERMES_HOME}"
 exec "${HERMES_HOME}/hermes-agent/venv/bin/python" -m hermes_cli.main gateway run --replace
 EOF
   chmod +x "${HERMES_HOME}/start-hermes-gateway.sh"
-  run_as_hermes "cd '${HERMES_HOME}' && nohup ./start-hermes-gateway.sh > gateway.log 2>&1 & echo \$! > bootstrap_gateway.pid"
+  run_as_hermes "cd '${HERMES_HOME}'; nohup ./start-hermes-gateway.sh > gateway.log 2>&1 & echo \$! > bootstrap_gateway.pid"
   echo "[hermes-bootstrap] Started Hermes gateway pid $(cat "${HERMES_HOME}/bootstrap_gateway.pid" 2>/dev/null || true)"
   sleep 5
   if ! kill -0 "$(cat "${HERMES_HOME}/bootstrap_gateway.pid")" 2>/dev/null; then
