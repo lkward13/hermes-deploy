@@ -85,8 +85,9 @@ if [[ "${HERMES_USER}" != "root" ]]; then
   chown -R "${HERMES_USER}:${HERMES_USER}" "${HERMES_HOME}/scripts" "${HERMES_HOME}/cron"
 fi
 
-echo "[hermes-bootstrap] Installing systemd service"
-cat >/etc/systemd/system/hermes-gateway.service <<EOF
+if command -v systemctl >/dev/null 2>&1; then
+  echo "[hermes-bootstrap] Installing systemd service"
+  cat >/etc/systemd/system/hermes-gateway.service <<EOF
 [Unit]
 Description=Hermes Gateway
 After=network-online.target
@@ -106,11 +107,31 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
-systemctl daemon-reload
-systemctl enable --now hermes-gateway.service
+  systemctl daemon-reload
+  systemctl enable --now hermes-gateway.service
 
-echo "[hermes-bootstrap] Waiting for service"
-sleep 5
-systemctl --no-pager --full status hermes-gateway.service
+  echo "[hermes-bootstrap] Waiting for service"
+  sleep 5
+  systemctl --no-pager --full status hermes-gateway.service
+else
+  echo "[hermes-bootstrap] systemctl unavailable; starting Hermes gateway with nohup"
+  cat >"${HERMES_HOME}/start-hermes-gateway.sh" <<EOF
+#!/usr/bin/env bash
+set -a
+source "${HERMES_HOME}/.env"
+set +a
+cd "${HERMES_HOME}"
+exec "${HERMES_HOME}/hermes-agent/venv/bin/python" -m hermes_cli.main gateway run --replace
+EOF
+  chmod +x "${HERMES_HOME}/start-hermes-gateway.sh"
+  run_as_hermes "cd '${HERMES_HOME}' && nohup ./start-hermes-gateway.sh > gateway.log 2>&1 & echo \$! > gateway.pid"
+  echo "[hermes-bootstrap] Started Hermes gateway pid $(cat "${HERMES_HOME}/gateway.pid" 2>/dev/null || true)"
+  sleep 5
+  if ! kill -0 "$(cat "${HERMES_HOME}/gateway.pid")" 2>/dev/null; then
+    echo "[hermes-bootstrap] Hermes gateway exited during startup"
+    tail -100 "${HERMES_HOME}/gateway.log" || true
+    exit 1
+  fi
+fi
 
 echo "[hermes-bootstrap] Complete"
