@@ -73,7 +73,7 @@ echo "[hermes-bootstrap] Creating virtualenv"
 run_as_hermes "python3 -m venv '${HERMES_HOME}/hermes-agent/venv'"
 run_as_hermes "'${HERMES_HOME}/hermes-agent/venv/bin/python' -m pip install --upgrade pip wheel setuptools"
 run_as_hermes "cd '${HERMES_HOME}/hermes-agent' && '${HERMES_HOME}/hermes-agent/venv/bin/pip' install -e ."
-run_as_hermes "'${HERMES_HOME}/hermes-agent/venv/bin/pip' install python-dotenv requests"
+run_as_hermes "'${HERMES_HOME}/hermes-agent/venv/bin/pip' install python-dotenv requests python-telegram-bot"
 
 echo "[hermes-bootstrap] Rendering templates"
 export HERMES_HOME
@@ -124,10 +124,10 @@ cd "${HERMES_HOME}"
 exec "${HERMES_HOME}/hermes-agent/venv/bin/python" -m hermes_cli.main gateway run --replace
 EOF
   chmod +x "${HERMES_HOME}/start-hermes-gateway.sh"
-  run_as_hermes "cd '${HERMES_HOME}' && nohup ./start-hermes-gateway.sh > gateway.log 2>&1 & echo \$! > gateway.pid"
-  echo "[hermes-bootstrap] Started Hermes gateway pid $(cat "${HERMES_HOME}/gateway.pid" 2>/dev/null || true)"
+  run_as_hermes "cd '${HERMES_HOME}' && nohup ./start-hermes-gateway.sh > gateway.log 2>&1 & echo \$! > bootstrap_gateway.pid"
+  echo "[hermes-bootstrap] Started Hermes gateway pid $(cat "${HERMES_HOME}/bootstrap_gateway.pid" 2>/dev/null || true)"
   sleep 5
-  if ! kill -0 "$(cat "${HERMES_HOME}/gateway.pid")" 2>/dev/null; then
+  if ! kill -0 "$(cat "${HERMES_HOME}/bootstrap_gateway.pid")" 2>/dev/null; then
     echo "[hermes-bootstrap] Hermes gateway exited during startup"
     tail -100 "${HERMES_HOME}/gateway.log" || true
     exit 1
