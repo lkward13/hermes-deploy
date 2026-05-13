@@ -30,16 +30,28 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
   python3-venv \
   rsync
 
-if ! id "${HERMES_USER}" >/dev/null 2>&1; then
+if ! command -v useradd >/dev/null 2>&1; then
+  echo "[hermes-bootstrap] useradd unavailable; falling back to root-mode install"
+  HERMES_USER="root"
+  HERMES_HOME="${HERMES_HOME:-/root/.hermes}"
+fi
+
+if [[ "${HERMES_USER}" != "root" ]] && ! id "${HERMES_USER}" >/dev/null 2>&1; then
   echo "[hermes-bootstrap] Creating user ${HERMES_USER}"
   useradd --create-home --shell /bin/bash "${HERMES_USER}"
 fi
 
 mkdir -p "${HERMES_HOME}"
-chown -R "${HERMES_USER}:${HERMES_USER}" "$(dirname "${HERMES_HOME}")"
+if [[ "${HERMES_USER}" != "root" ]]; then
+  chown -R "${HERMES_USER}:${HERMES_USER}" "$(dirname "${HERMES_HOME}")"
+fi
 
 run_as_hermes() {
-  runuser -u "${HERMES_USER}" -- bash -lc "$*"
+  if [[ "${HERMES_USER}" == "root" ]] || ! command -v runuser >/dev/null 2>&1; then
+    bash -lc "$*"
+  else
+    runuser -u "${HERMES_USER}" -- bash -lc "$*"
+  fi
 }
 
 echo "[hermes-bootstrap] Cloning deploy repo"
@@ -69,7 +81,9 @@ run_as_hermes "cd '${HERMES_HOME}' && HERMES_HOME='${HERMES_HOME}' python3 ./scr
 
 echo "[hermes-bootstrap] Installing cron script"
 mkdir -p "${HERMES_HOME}/scripts" "${HERMES_HOME}/cron"
-chown -R "${HERMES_USER}:${HERMES_USER}" "${HERMES_HOME}/scripts" "${HERMES_HOME}/cron"
+if [[ "${HERMES_USER}" != "root" ]]; then
+  chown -R "${HERMES_USER}:${HERMES_USER}" "${HERMES_HOME}/scripts" "${HERMES_HOME}/cron"
+fi
 
 echo "[hermes-bootstrap] Installing systemd service"
 cat >/etc/systemd/system/hermes-gateway.service <<EOF
