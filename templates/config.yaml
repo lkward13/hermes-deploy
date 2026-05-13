@@ -123,6 +123,10 @@ skills:
   inline_shell_timeout: 10
   guard_agent_created: false
   creation_nudge_interval: 15
+plugins:
+  enabled:
+  - codex-auth-router
+  disabled: []
 curator:
   enabled: true
   interval_hours: 168

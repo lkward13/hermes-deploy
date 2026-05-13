@@ -1,0 +1,6 @@
+name: codex-auth-router
+version: "1.0.0"
+description: Intercept ChatGPT/Codex auth messages before gateway model dispatch.
+author: NoDesk
+provides_hooks:
+  - pre_gateway_dispatch
