@@ -33,7 +33,7 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
 if ! command -v useradd >/dev/null 2>&1; then
   echo "[hermes-bootstrap] useradd unavailable; falling back to root-mode install"
   HERMES_USER="root"
-  HERMES_HOME="${HERMES_HOME:-/root/.hermes}"
+  HERMES_HOME="/root/.hermes"
 fi
 
 if [[ "${HERMES_USER}" != "root" ]] && ! id "${HERMES_USER}" >/dev/null 2>&1; then
