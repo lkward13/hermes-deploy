@@ -1,0 +1,31 @@
+{
+  "jobs": [
+    {
+      "id": "lead-auto-text",
+      "name": "lead-auto-text",
+      "prompt": "",
+      "skills": ["lead-auto-text"],
+      "skill": "lead-auto-text",
+      "model": null,
+      "provider": null,
+      "base_url": null,
+      "script": "lead_auto_text_cron.py",
+      "no_agent": false,
+      "schedule": {
+        "kind": "interval",
+        "minutes": 1,
+        "display": "every 1m"
+      },
+      "schedule_display": "every 1m",
+      "repeat": {
+        "times": null,
+        "completed": 0
+      },
+      "enabled": true,
+      "state": "scheduled",
+      "deliver": "telegram",
+      "origin": null
+    }
+  ],
+  "updated_at": null
+}
