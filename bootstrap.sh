@@ -59,10 +59,10 @@ run_as_hermes() {
 
 echo "[hermes-bootstrap] Cloning deploy repo"
 if [[ -d "${HERMES_HOME}/.git" ]]; then
-  run_as_hermes "cd '${HERMES_HOME}' && git fetch origin && git checkout '${HERMES_DEPLOY_REF}' && git pull --ff-only"
+  run_as_hermes "cd '${HERMES_HOME}' && git fetch origin && git checkout '${HERMES_DEPLOY_REF}'"
 else
   rm -rf "${HERMES_HOME:?}"/*
-  run_as_hermes "git clone --branch '${HERMES_DEPLOY_REF}' '${HERMES_DEPLOY_REPO}' '${HERMES_HOME}'"
+  run_as_hermes "git clone '${HERMES_DEPLOY_REPO}' '${HERMES_HOME}' && cd '${HERMES_HOME}' && git checkout '${HERMES_DEPLOY_REF}'"
 fi
 
 echo "[hermes-bootstrap] Cloning Hermes agent"
