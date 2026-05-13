@@ -19,6 +19,8 @@ CODEX_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 CODEX_OAUTH_TOKEN_URL = "https://auth.openai.com/oauth/token"
 DEFAULT_CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex"
 
+NODESK_PROXY_URL = os.environ.get("CODEX_AUTH_PROXY_URL", "").rstrip("/")
+
 
 def _hermes_home() -> Path:
     return Path(os.environ.get("HERMES_HOME", str(Path.home() / ".hermes"))).expanduser()
@@ -59,12 +61,15 @@ def _request_json(method: str, url: str, **kwargs) -> dict[str, Any]:
 
 
 def start_auth(_args: argparse.Namespace) -> int:
-    payload = _request_json(
-        "POST",
-        f"{ISSUER}/api/accounts/deviceauth/usercode",
-        json={"client_id": CODEX_OAUTH_CLIENT_ID},
-        headers={"Content-Type": "application/json"},
-    )
+    if NODESK_PROXY_URL:
+        payload = _request_json("POST", f"{NODESK_PROXY_URL}/start", json={})
+    else:
+        payload = _request_json(
+            "POST",
+            f"{ISSUER}/api/accounts/deviceauth/usercode",
+            json={"client_id": CODEX_OAUTH_CLIENT_ID},
+            headers={"Content-Type": "application/json"},
+        )
 
     user_code = str(payload.get("user_code") or "").strip()
     device_auth_id = str(payload.get("device_auth_id") or "").strip()
@@ -124,40 +129,59 @@ def poll_auth(_args: argparse.Namespace) -> int:
         print("The ChatGPT/Codex sign-in code expired. Start again.")
         return 3
 
-    poll = requests.post(
-        f"{ISSUER}/api/accounts/deviceauth/token",
-        json={
-            "device_auth_id": pending["device_auth_id"],
-            "user_code": pending["user_code"],
-        },
-        headers={"Content-Type": "application/json"},
-        timeout=15,
-    )
-    if poll.status_code in {403, 404}:
-        print("Still waiting for ChatGPT approval. Ask the user to finish the sign-in page, then poll again.")
-        return 1
-    if poll.status_code >= 400:
-        raise RuntimeError(f"OpenAI device auth poll returned HTTP {poll.status_code}")
+    if NODESK_PROXY_URL:
+        proxy_resp = requests.post(
+            f"{NODESK_PROXY_URL}/poll",
+            json={
+                "device_auth_id": pending["device_auth_id"],
+                "user_code": pending["user_code"],
+            },
+            timeout=30,
+        )
+        if proxy_resp.status_code >= 400:
+            raise RuntimeError(f"Proxy poll returned HTTP {proxy_resp.status_code}")
+        proxy_data = proxy_resp.json()
+        if proxy_data.get("status") == "pending":
+            print("Still waiting for ChatGPT approval. Ask the user to finish the sign-in page, then poll again.")
+            return 1
+        if proxy_data.get("error"):
+            raise RuntimeError(f"Proxy poll error: {proxy_data['error']}")
+        _save_codex_tokens(proxy_data)
+    else:
+        poll = requests.post(
+            f"{ISSUER}/api/accounts/deviceauth/token",
+            json={
+                "device_auth_id": pending["device_auth_id"],
+                "user_code": pending["user_code"],
+            },
+            headers={"Content-Type": "application/json"},
+            timeout=15,
+        )
+        if poll.status_code in {403, 404}:
+            print("Still waiting for ChatGPT approval. Ask the user to finish the sign-in page, then poll again.")
+            return 1
+        if poll.status_code >= 400:
+            raise RuntimeError(f"OpenAI device auth poll returned HTTP {poll.status_code}")
 
-    code_payload = poll.json()
-    authorization_code = str(code_payload.get("authorization_code") or "").strip()
-    code_verifier = str(code_payload.get("code_verifier") or "").strip()
-    if not authorization_code or not code_verifier:
-        raise RuntimeError("OpenAI device auth response was missing authorization details")
+        code_payload = poll.json()
+        authorization_code = str(code_payload.get("authorization_code") or "").strip()
+        code_verifier = str(code_payload.get("code_verifier") or "").strip()
+        if not authorization_code or not code_verifier:
+            raise RuntimeError("OpenAI device auth response was missing authorization details")
 
-    token_payload = _request_json(
-        "POST",
-        CODEX_OAUTH_TOKEN_URL,
-        data={
-            "grant_type": "authorization_code",
-            "code": authorization_code,
-            "redirect_uri": f"{ISSUER}/deviceauth/callback",
-            "client_id": CODEX_OAUTH_CLIENT_ID,
-            "code_verifier": code_verifier,
-        },
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-    )
-    _save_codex_tokens(token_payload)
+        token_payload = _request_json(
+            "POST",
+            CODEX_OAUTH_TOKEN_URL,
+            data={
+                "grant_type": "authorization_code",
+                "code": authorization_code,
+                "redirect_uri": f"{ISSUER}/deviceauth/callback",
+                "client_id": CODEX_OAUTH_CLIENT_ID,
+                "code_verifier": code_verifier,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        _save_codex_tokens(token_payload)
     _pending_path().unlink(missing_ok=True)
     print("ChatGPT/Codex is connected for this Hermes agent.")
     return 0
