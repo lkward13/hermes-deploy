@@ -19,7 +19,10 @@ if [[ -z "${HERMES_DEPLOY_REPO}" ]]; then
 fi
 
 echo "[hermes-bootstrap] Installing system packages"
-apt-get update
+apt-get \
+  -o Acquire::Check-Valid-Until=false \
+  -o Acquire::Check-Date=false \
+  update
 DEBIAN_FRONTEND=noninteractive apt-get install -y \
   ca-certificates \
   curl \
