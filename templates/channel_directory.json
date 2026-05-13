@@ -16,7 +16,14 @@
       }
     ],
     "discord": [],
-    "whatsapp": [],
+    "whatsapp": [
+      {
+        "id": "{{WHATSAPP_PHONE_NUMBER}}",
+        "name": "{{OWNER_NAME}}",
+        "type": "dm",
+        "thread_id": null
+      }
+    ],
     "slack": [],
     "signal": [],
     "sms": [],

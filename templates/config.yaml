@@ -171,6 +171,8 @@ platform_toolsets:
   - hermes-cli
   telegram:
   - hermes-telegram
+  whatsapp:
+  - hermes-whatsapp
 platforms:
   webhook:
     enabled: true
@@ -179,5 +181,9 @@ platforms:
       port: 8644
   telegram:
     enabled: true
+  whatsapp:
+    enabled: {{WHATSAPP_ENABLED}}
+    extra:
+      mode: "{{WHATSAPP_MODE}}"
 _config_version: 11
 group_sessions_per_user: true

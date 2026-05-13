@@ -22,8 +22,13 @@ export ADMIN_PHONE="+15555555555"
 export ADMIN_TELEGRAM_ID="7596854319"
 export OWNER_TELEGRAM_ID=""
 export TELEGRAM_ALLOWED_USERS="7596854319"
+export TELEGRAM_BOT_USERNAME="client_hermes_bot"
 export TELEGRAM_OWNER_CHAT_ID="7596854319"
 export TELEGRAM_BOT_TOKEN="..."
+export WHATSAPP_ENABLED="false"
+export WHATSAPP_MODE="bot"
+export WHATSAPP_PHONE_NUMBER="15555550123"
+export WHATSAPP_ALLOWED_USERS="15555550123"
 export CLICKSEND_USERNAME="..."
 export CLICKSEND_API_KEY="..."
 export CLICKSEND_FROM_NUMBER="+1..."
@@ -37,6 +42,8 @@ bash bootstrap.sh
 
 ## Notes
 
+- Telegram is per-client: create one bot per client in BotFather, store its token/username in NoDesk, then have the client press Start or message that bot before Hermes can reply.
+- WhatsApp uses Hermes' built-in WhatsApp Web/Baileys bridge. Enable it per client in NoDesk, bootstrap with `WHATSAPP_ENABLED=true`, then pair the WhatsApp account on the agent with `hermes whatsapp`.
 - Secrets must be supplied at bootstrap time or written to `.env` after install.
 - `auth.json`, OAuth token files, ClickSend keys, Facebook tokens, and QBO token files are intentionally ignored by git.
 - The Hermes agent runtime is installed from `https://github.com/NousResearch/hermes-agent.git` at the pinned commit in `bootstrap.sh`.
