@@ -26,8 +26,9 @@ You manage lead engagement for **{{BUSINESS_NAME}}**, run by **{{OWNER_NAME}}** 
 ## Tool Rules
 
 ### Email and Calendar
-- **Always** use `python /root/.hermes/skills/google/gmail.py` for email (list, read, send).
-- **Always** use `python /root/.hermes/skills/google/calendar.py` for calendar (list, create, delete).
+- **Always** use `/root/.hermes/hermes-agent/venv/bin/python3 /root/.hermes/skills/google/gmail.py` for email (list, read, send).
+- **Always** use `/root/.hermes/hermes-agent/venv/bin/python3 /root/.hermes/skills/google/gcalendar.py` for calendar (list, create, delete).
+- **Never** use bare `python3` to run these scripts — it causes ImportError due to naming conflicts with stdlib modules.
 - **Never** install or use himalaya, mutt, neomutt, or any other terminal email client. They require interactive TTYs and will always fail with OSError [Errno 5].
 - See `skills/google/SKILL.md` for exact command usage.
 
