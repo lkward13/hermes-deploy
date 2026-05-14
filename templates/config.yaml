@@ -43,6 +43,9 @@ browser:
   auto_local_for_private_urls: true
   cdp_url: ''
   headless: true
+  # --no-sandbox is required on Hetzner/Hostinger VPSes (Ubuntu 23.10+ blocks
+  # unprivileged user namespaces, so Chrome's sandbox can't initialize).
+  chromium_args: ['--no-sandbox']
 checkpoints:
   enabled: true
   max_snapshots: 50

@@ -78,6 +78,17 @@ run_as_hermes "'${HERMES_HOME}/hermes-agent/venv/bin/python' -m pip install --up
 run_as_hermes "cd '${HERMES_HOME}/hermes-agent' && '${HERMES_HOME}/hermes-agent/venv/bin/pip' install -e ."
 run_as_hermes "'${HERMES_HOME}/hermes-agent/venv/bin/pip' install python-dotenv requests python-telegram-bot"
 
+echo "[hermes-bootstrap] Installing Node.js + agent-browser (browser tool)"
+if ! command -v node >/dev/null 2>&1; then
+  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+  DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs
+fi
+if ! command -v agent-browser >/dev/null 2>&1; then
+  npm install -g agent-browser
+fi
+# Download Chromium + system deps (idempotent — skips if already installed)
+agent-browser install --with-deps || echo "[hermes-bootstrap] WARNING: agent-browser install failed; browser tool will not work until fixed"
+
 echo "[hermes-bootstrap] Adding hermes venv to system PATH"
 HERMES_BIN="${HERMES_HOME}/hermes-agent/venv/bin"
 cat >"/etc/profile.d/hermes.sh" <<PROFILE
