@@ -154,4 +154,8 @@ EOF
   fi
 fi
 
+echo "[hermes-bootstrap] Installing nightly auto-pull cron"
+CRON_JOB="0 3 * * * cd ${HERMES_HOME} && git pull origin main --ff-only >> ${HERMES_HOME}/auto-pull.log 2>&1"
+(crontab -l 2>/dev/null | grep -v "git pull origin main"; echo "$CRON_JOB") | crontab -
+
 echo "[hermes-bootstrap] Complete"
