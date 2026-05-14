@@ -13,6 +13,9 @@ from pathlib import Path
 from typing import Any
 
 import requests
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 ISSUER = "https://auth.openai.com"
 CODEX_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
@@ -50,8 +53,8 @@ def _read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text())
 
 
-def _request_json(method: str, url: str, **kwargs) -> dict[str, Any]:
-    response = requests.request(method, url, timeout=15, **kwargs)
+def _request_json(method: str, url: str, *, verify: bool = True, **kwargs) -> dict[str, Any]:
+    response = requests.request(method, url, timeout=15, verify=verify, **kwargs)
     if response.status_code >= 400:
         raise RuntimeError(f"{url} returned HTTP {response.status_code}")
     payload = response.json()
@@ -62,7 +65,7 @@ def _request_json(method: str, url: str, **kwargs) -> dict[str, Any]:
 
 def start_auth(_args: argparse.Namespace) -> int:
     if NODESK_PROXY_URL:
-        payload = _request_json("POST", f"{NODESK_PROXY_URL}/start", json={})
+        payload = _request_json("POST", f"{NODESK_PROXY_URL}/start", verify=False, json={})
     else:
         payload = _request_json(
             "POST",
@@ -137,6 +140,7 @@ def poll_auth(_args: argparse.Namespace) -> int:
                 "user_code": pending["user_code"],
             },
             timeout=30,
+            verify=False,
         )
         if proxy_resp.status_code >= 400:
             raise RuntimeError(f"Proxy poll returned HTTP {proxy_resp.status_code}")
