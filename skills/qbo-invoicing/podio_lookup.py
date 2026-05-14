@@ -78,6 +78,13 @@ def get_access_token() -> str:
     if _token_cache["access_token"] and _token_cache["expires_at"] - now > 60:
         return _token_cache["access_token"]
 
+    _load_env()
+    oauth_token = os.environ.get("PODIO_ACCESS_TOKEN", "").strip().strip("'\"")
+    if oauth_token:
+        _token_cache["access_token"] = oauth_token
+        _token_cache["expires_at"] = now + 3600
+        return oauth_token
+
     creds = _get_creds()
     resp = requests.post(
         "https://podio.com/oauth/token",
