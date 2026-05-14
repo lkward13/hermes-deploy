@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Look up leads/jobs in the configured Podio app.
+Look up leads/jobs across all connected Podio apps.
 
 Usage:
     python3 podio_lookup.py --search "Devin Burchett"
@@ -19,13 +19,30 @@ import sys
 
 import requests
 
-from podio_access import get_podio_access_token
+from podio_access import get_podio_access_token, load_hermes_env
 
 PODIO_API = "https://api.podio.com"
 TIMEOUT = 15
 
-# Set PODIO_APP_ID for each client if this skill is enabled.
-APP_ID = int(os.environ.get("PODIO_APP_ID", "0") or "0")
+
+def _load_app_ids() -> list[int]:
+    """Return all Podio app IDs from PODIO_APPS_JSON, falling back to PODIO_APP_ID."""
+    load_hermes_env()
+    raw = os.environ.get("PODIO_APPS_JSON", "").strip().strip("'\"")
+    if raw and raw != "[]":
+        try:
+            apps = json.loads(raw)
+            ids = [int(a["app_id"]) for a in apps if a.get("app_id")]
+            if ids:
+                return ids
+        except (json.JSONDecodeError, KeyError, ValueError):
+            pass
+    single = int(os.environ.get("PODIO_APP_ID", "0") or "0")
+    return [single] if single else []
+
+
+APP_IDS = _load_app_ids()
+APP_ID = APP_IDS[0] if APP_IDS else 0  # kept for backward compat
 
 FIELDS = {
     "name": 276836610,
@@ -95,6 +112,7 @@ def _extract_field_value(field: dict) -> str:
 def _parse_item(item: dict) -> dict:
     result = {
         "item_id": item.get("item_id"),
+        "app_id": item.get("app", {}).get("app_id"),
         "title": item.get("title", ""),
         "name": "",
         "phone": "",
@@ -133,22 +151,15 @@ def _phone_variants(query: str) -> list[str]:
     return list(variants)
 
 
-def _fetch_all_items(limit: int = 100) -> list[dict]:
-    """Fetch items from the app (paginated if needed) for client-side filtering."""
+def _fetch_all_items_from_app(app_id: int, limit: int = 100) -> list[dict]:
     all_items = []
     offset = 0
     batch_size = min(limit, 100)
-
     while offset < limit:
         resp = requests.post(
-            f"{PODIO_API}/item/app/{APP_ID}/filter/",
+            f"{PODIO_API}/item/app/{app_id}/filter/",
             headers=_headers(),
-            json={
-                "sort_by": "created_on",
-                "sort_desc": True,
-                "limit": batch_size,
-                "offset": offset,
-            },
+            json={"sort_by": "created_on", "sort_desc": True, "limit": batch_size, "offset": offset},
             timeout=TIMEOUT,
         )
         if resp.status_code != 200:
@@ -160,12 +171,19 @@ def _fetch_all_items(limit: int = 100) -> list[dict]:
         offset += batch_size
         if len(items) < batch_size:
             break
+    return all_items
 
+
+def _fetch_all_items(limit: int = 100) -> list[dict]:
+    """Fetch items across all connected apps."""
+    all_items = []
+    for app_id in APP_IDS:
+        all_items.extend(_fetch_all_items_from_app(app_id, limit=limit))
     return all_items
 
 
 def search_items(query: str) -> list[dict]:
-    """Search by name or phone."""
+    """Search by name or phone across all connected apps."""
     results = []
 
     if _is_phone_query(query):
@@ -184,40 +202,36 @@ def search_items(query: str) -> list[dict]:
                     results.append(parsed)
                     break
     else:
-        resp = requests.post(
-            f"{PODIO_API}/item/app/{APP_ID}/filter/",
-            headers=_headers(),
-            json={
-                "filters": {str(FIELDS["name"]): query},
-                "limit": 20,
-                "sort_by": "created_on",
-                "sort_desc": True,
-            },
-            timeout=TIMEOUT,
-        )
-        if resp.status_code == 200:
-            items = resp.json().get("items", [])
-            results.extend(_parse_item(i) for i in items)
-
-        if not results:
+        for app_id in APP_IDS:
             resp = requests.post(
-                f"{PODIO_API}/search/app/{APP_ID}/",
+                f"{PODIO_API}/item/app/{app_id}/filter/",
                 headers=_headers(),
-                json={"query": query, "limit": 20, "ref_type": "item"},
+                json={
+                    "filters": {str(FIELDS["name"]): query},
+                    "limit": 20,
+                    "sort_by": "created_on",
+                    "sort_desc": True,
+                },
                 timeout=TIMEOUT,
             )
             if resp.status_code == 200:
-                search_data = resp.json()
-                search_results = search_data if isinstance(search_data, list) else search_data.get("results", [])
-                item_ids = [r.get("id") for r in search_results if r.get("id")]
-                for iid in item_ids[:10]:
-                    item_resp = requests.get(
-                        f"{PODIO_API}/item/{iid}",
-                        headers=_headers(),
-                        timeout=TIMEOUT,
-                    )
-                    if item_resp.status_code == 200:
-                        results.append(_parse_item(item_resp.json()))
+                results.extend(_parse_item(i) for i in resp.json().get("items", []))
+
+            if not any(r.get("app_id") == app_id for r in results):
+                resp = requests.post(
+                    f"{PODIO_API}/search/app/{app_id}/",
+                    headers=_headers(),
+                    json={"query": query, "limit": 20, "ref_type": "item"},
+                    timeout=TIMEOUT,
+                )
+                if resp.status_code == 200:
+                    search_data = resp.json()
+                    search_results = search_data if isinstance(search_data, list) else search_data.get("results", [])
+                    item_ids = [r.get("id") for r in search_results if r.get("id")]
+                    for iid in item_ids[:10]:
+                        item_resp = requests.get(f"{PODIO_API}/item/{iid}", headers=_headers(), timeout=TIMEOUT)
+                        if item_resp.status_code == 200:
+                            results.append(_parse_item(item_resp.json()))
 
     seen = set()
     deduped = []
@@ -229,21 +243,22 @@ def search_items(query: str) -> list[dict]:
 
 
 def list_recent(limit: int = 10) -> list[dict]:
-    resp = requests.post(
-        f"{PODIO_API}/item/app/{APP_ID}/filter/",
-        headers=_headers(),
-        json={
-            "sort_by": "created_on",
-            "sort_desc": True,
-            "limit": limit,
-        },
-        timeout=TIMEOUT,
-    )
-    if resp.status_code != 200:
-        print(f"Error listing items ({resp.status_code}): {resp.text}", file=sys.stderr)
-        return []
-    items = resp.json().get("items", [])
-    return [_parse_item(i) for i in items]
+    """List recent items across all connected apps."""
+    all_items = []
+    per_app = max(limit, limit * len(APP_IDS)) if len(APP_IDS) > 1 else limit
+    for app_id in APP_IDS:
+        resp = requests.post(
+            f"{PODIO_API}/item/app/{app_id}/filter/",
+            headers=_headers(),
+            json={"sort_by": "created_on", "sort_desc": True, "limit": per_app},
+            timeout=TIMEOUT,
+        )
+        if resp.status_code != 200:
+            print(f"Error listing items from app {app_id} ({resp.status_code}): {resp.text}", file=sys.stderr)
+            continue
+        all_items.extend(_parse_item(i) for i in resp.json().get("items", []))
+    all_items.sort(key=lambda x: x.get("date") or "", reverse=True)
+    return all_items[:limit]
 
 
 def update_item_status(item_id: int, status_text: str) -> bool:
@@ -279,6 +294,7 @@ def print_lead(lead: dict, index: int = None):
     print(f"    Date:     {lead['date'] or '(none)'}")
     print(f"    Status:   {status}")
     print(f"    Item ID:  {lead['item_id']}")
+    print(f"    App ID:   {lead.get('app_id') or '(unknown)'}")
     if lead.get("link"):
         print(f"    Link:     {lead['link']}")
     print()
