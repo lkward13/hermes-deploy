@@ -11,11 +11,24 @@ import argparse
 import base64
 import json
 import sys
-from email.mime.text import MIMEText
 
 import requests
 
 from google_auth import get_valid_token
+
+
+def _build_raw(to, subject, body, cc=None):
+    """Build a base64url-encoded RFC 2822 message without importing stdlib email."""
+    headers = [
+        f"To: {to}",
+        f"Subject: {subject}",
+        "MIME-Version: 1.0",
+        "Content-Type: text/plain; charset=utf-8",
+    ]
+    if cc:
+        headers.append(f"Cc: {cc}")
+    raw = "\r\n".join(headers) + "\r\n\r\n" + body
+    return base64.urlsafe_b64encode(raw.encode("utf-8")).decode()
 
 BASE = "https://gmail.googleapis.com/gmail/v1/users/me"
 
@@ -25,13 +38,7 @@ def headers():
 
 
 def cmd_send(args):
-    msg = MIMEText(args.body)
-    msg["To"] = args.to
-    msg["Subject"] = args.subject
-    if args.cc:
-        msg["Cc"] = args.cc
-
-    raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+    raw = _build_raw(args.to, args.subject, args.body, cc=args.cc or None)
     resp = requests.post(f"{BASE}/messages/send", headers=headers(), json={"raw": raw}, timeout=20)
     resp.raise_for_status()
     data = resp.json()
