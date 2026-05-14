@@ -16,10 +16,10 @@ import json
 import os
 import re
 import sys
-import time
-from pathlib import Path
 
 import requests
+
+from podio_access import get_podio_access_token
 
 PODIO_API = "https://api.podio.com"
 TIMEOUT = 15
@@ -45,68 +45,13 @@ STATUS_OPTIONS = {
 }
 STATUS_IDS_TO_TEXT = {v: k for k, v in STATUS_OPTIONS.items()}
 
-_token_cache = {"access_token": None, "expires_at": 0}
-
-
-def _load_env():
-    env_path = Path.home() / ".hermes" / ".env"
-    if not env_path.exists():
-        print(f"Error: {env_path} not found", file=sys.stderr)
-        sys.exit(1)
-
-    for line in env_path.read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if "=" in line:
-            key, _, value = line.partition("=")
-            os.environ.setdefault(key.strip(), value.strip())
-
-
-def _get_creds():
-    _load_env()
-    required = ["PODIO_CLIENT_ID", "PODIO_CLIENT_SECRET", "PODIO_USERNAME", "PODIO_PASSWORD"]
-    missing = [k for k in required if not os.environ.get(k)]
-    if missing:
-        print(f"Error: Missing env vars: {', '.join(missing)}", file=sys.stderr)
-        sys.exit(1)
-    return {k: os.environ[k] for k in required}
-
 
 def get_access_token() -> str:
-    now = time.time()
-    if _token_cache["access_token"] and _token_cache["expires_at"] - now > 60:
-        return _token_cache["access_token"]
-
-    _load_env()
-    oauth_token = os.environ.get("PODIO_ACCESS_TOKEN", "").strip().strip("'\"")
-    if oauth_token:
-        _token_cache["access_token"] = oauth_token
-        _token_cache["expires_at"] = now + 3600
-        return oauth_token
-
-    creds = _get_creds()
-    resp = requests.post(
-        "https://podio.com/oauth/token",
-        data={
-            "grant_type": "password",
-            "client_id": creds["PODIO_CLIENT_ID"],
-            "client_secret": creds["PODIO_CLIENT_SECRET"],
-            "username": creds["PODIO_USERNAME"],
-            "password": creds["PODIO_PASSWORD"],
-        },
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-        timeout=TIMEOUT,
-    )
-
-    if resp.status_code != 200:
-        print(f"Auth failed ({resp.status_code}): {resp.text}", file=sys.stderr)
+    try:
+        return get_podio_access_token()
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
         sys.exit(1)
-
-    data = resp.json()
-    _token_cache["access_token"] = data["access_token"]
-    _token_cache["expires_at"] = now + data.get("expires_in", 3600)
-    return data["access_token"]
 
 
 def _headers():

@@ -24,7 +24,6 @@ import json
 import os
 import re
 import sys
-import time
 from pathlib import Path
 
 import requests
@@ -47,13 +46,13 @@ _load_env()
 
 from qbo_config import get_base_url
 from qbo_auth import get_access_token, get_realm_id
+from podio_access import get_podio_access_token_or_none
 
 # ---------------------------------------------------------------------------
 # Podio integration (inline to avoid import issues)
 # ---------------------------------------------------------------------------
 
 PODIO_API = "https://api.podio.com"
-PODIO_APP_ID = 30724222
 PODIO_INVOICE_STATUS_FIELD_ID = 276921460
 PODIO_STATUS_OPTIONS = {
     "New Lead": 1,
@@ -69,37 +68,19 @@ PODIO_FIELDS = {
     "invoice_status": 276921460,
 }
 
-_podio_token_cache = {"access_token": None, "expires_at": 0}
+
+def _podio_app_id() -> int:
+    return int(os.environ.get("PODIO_APP_ID", "0") or "0")
 
 
-def _get_podio_token() -> str:
-    now = time.time()
-    if _podio_token_cache["access_token"] and _podio_token_cache["expires_at"] - now > 60:
-        return _podio_token_cache["access_token"]
-
-    resp = requests.post(
-        "https://podio.com/oauth/token",
-        data={
-            "grant_type": "password",
-            "client_id": os.environ["PODIO_CLIENT_ID"],
-            "client_secret": os.environ["PODIO_CLIENT_SECRET"],
-            "username": os.environ["PODIO_USERNAME"],
-            "password": os.environ["PODIO_PASSWORD"],
-        },
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-        timeout=15,
-    )
-    if resp.status_code != 200:
-        print(f"Podio auth failed ({resp.status_code}): {resp.text}", file=sys.stderr)
-        return None
-    data = resp.json()
-    _podio_token_cache["access_token"] = data["access_token"]
-    _podio_token_cache["expires_at"] = now + data.get("expires_in", 3600)
-    return data["access_token"]
+def _get_podio_token() -> str | None:
+    return get_podio_access_token_or_none()
 
 
 def _podio_headers():
     token = _get_podio_token()
+    if not token:
+        return None
     return {
         "Authorization": f"OAuth2 {token}",
         "Content-Type": "application/json",
@@ -108,9 +89,12 @@ def _podio_headers():
 
 def update_podio_item_status(item_id: int, status_text: str) -> bool:
     option_id = PODIO_STATUS_OPTIONS[status_text]
+    headers = _podio_headers()
+    if not headers:
+        return False
     resp = requests.put(
         f"{PODIO_API}/item/{item_id}/value/{PODIO_INVOICE_STATUS_FIELD_ID}",
-        headers=_podio_headers(),
+        headers=headers,
         json=option_id,
         timeout=15,
     )
@@ -122,10 +106,16 @@ def get_podio_items_with_status(status_text: str) -> list[dict]:
     option_id = PODIO_STATUS_OPTIONS.get(status_text)
     if not option_id:
         return []
+    app_id = _podio_app_id()
+    if not app_id:
+        return []
+    headers = _podio_headers()
+    if not headers:
+        return []
 
     resp = requests.post(
-        f"{PODIO_API}/item/app/{PODIO_APP_ID}/filter/",
-        headers=_podio_headers(),
+        f"{PODIO_API}/item/app/{app_id}/filter/",
+        headers=headers,
         json={
             "filters": {
                 str(PODIO_INVOICE_STATUS_FIELD_ID): [option_id],

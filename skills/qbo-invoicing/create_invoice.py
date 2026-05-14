@@ -53,6 +53,7 @@ import requests
 
 from qbo_config import get_base_url
 from qbo_auth import get_access_token, get_realm_id
+from podio_access import get_podio_access_token_or_none
 
 
 # ---------------------------------------------------------------------------
@@ -79,51 +80,6 @@ PODIO_STATUS_OPTIONS = {
     "Cancelled": 5,
 }
 
-_podio_token_cache = {"access_token": None, "expires_at": 0}
-
-
-def _load_hermes_env():
-    from pathlib import Path
-    import time as _time
-    env_path = Path.home() / ".hermes" / ".env"
-    if not env_path.exists():
-        return
-    for line in env_path.read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if "=" in line:
-            key, _, value = line.partition("=")
-            os.environ.setdefault(key.strip(), value.strip())
-
-
-def _get_podio_token() -> str:
-    import time as _time
-    now = _time.time()
-    if _podio_token_cache["access_token"] and _podio_token_cache["expires_at"] - now > 60:
-        return _podio_token_cache["access_token"]
-
-    _load_hermes_env()
-    resp = requests.post(
-        "https://podio.com/oauth/token",
-        data={
-            "grant_type": "password",
-            "client_id": os.environ["PODIO_CLIENT_ID"],
-            "client_secret": os.environ["PODIO_CLIENT_SECRET"],
-            "username": os.environ["PODIO_USERNAME"],
-            "password": os.environ["PODIO_PASSWORD"],
-        },
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-        timeout=15,
-    )
-    if resp.status_code != 200:
-        print(f"Podio auth failed ({resp.status_code}): {resp.text}", file=sys.stderr)
-        return None
-    data = resp.json()
-    _podio_token_cache["access_token"] = data["access_token"]
-    _podio_token_cache["expires_at"] = now + data.get("expires_in", 3600)
-    return data["access_token"]
-
 
 def update_podio_status(item_id: int, status_text: str) -> bool:
     """Set the Invoice Status on a Podio item after invoice creation."""
@@ -131,7 +87,7 @@ def update_podio_status(item_id: int, status_text: str) -> bool:
         print(f"Warning: Unknown Podio status '{status_text}', skipping update.", file=sys.stderr)
         return False
 
-    token = _get_podio_token()
+    token = get_podio_access_token_or_none()
     if not token:
         print("Warning: Could not authenticate with Podio. Status not updated.", file=sys.stderr)
         return False
