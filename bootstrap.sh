@@ -78,6 +78,12 @@ run_as_hermes "'${HERMES_HOME}/hermes-agent/venv/bin/python' -m pip install --up
 run_as_hermes "cd '${HERMES_HOME}/hermes-agent' && '${HERMES_HOME}/hermes-agent/venv/bin/pip' install -e ."
 run_as_hermes "'${HERMES_HOME}/hermes-agent/venv/bin/pip' install python-dotenv requests python-telegram-bot"
 
+echo "[hermes-bootstrap] Installing voice extras (TTS + STT)"
+# edge-tts: free Microsoft TTS for voice replies (~5MB).
+# faster-whisper: local STT so clients can leave voice notes (~200MB pkg,
+# ~500MB for the default model downloaded on first use).
+run_as_hermes "'${HERMES_HOME}/hermes-agent/venv/bin/pip' install --no-build-isolation edge-tts faster-whisper sounddevice numpy"
+
 echo "[hermes-bootstrap] Installing Node.js + agent-browser (browser tool)"
 if ! command -v node >/dev/null 2>&1; then
   curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
