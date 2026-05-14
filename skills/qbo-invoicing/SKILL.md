@@ -31,10 +31,12 @@ Required for SMS:
 
 Required for Podio:
 
-- `PODIO_CLIENT_ID`
-- `PODIO_CLIENT_SECRET`
-- `PODIO_USERNAME`
-- `PODIO_PASSWORD`
+- `PODIO_ACCESS_TOKEN` — set automatically by NoDesk credential sync (OAuth)
+- `PODIO_REFRESH_TOKEN` + `PODIO_CLIENT_ID` + `PODIO_CLIENT_SECRET` — used to refresh if access token is expired
+- `PODIO_APPS_JSON` — JSON array of `{"app_id": "..."}` objects, set automatically by NoDesk
+- Legacy fallback: `PODIO_USERNAME` + `PODIO_PASSWORD` (only if OAuth tokens are absent)
+
+Podio lookup works across all apps in `PODIO_APPS_JSON` without any manual configuration.
 
 ## Create Invoice
 

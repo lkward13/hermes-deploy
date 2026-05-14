@@ -78,6 +78,23 @@ run_as_hermes "'${HERMES_HOME}/hermes-agent/venv/bin/python' -m pip install --up
 run_as_hermes "cd '${HERMES_HOME}/hermes-agent' && '${HERMES_HOME}/hermes-agent/venv/bin/pip' install -e ."
 run_as_hermes "'${HERMES_HOME}/hermes-agent/venv/bin/pip' install python-dotenv requests python-telegram-bot"
 
+echo "[hermes-bootstrap] Adding hermes venv to system PATH"
+HERMES_BIN="${HERMES_HOME}/hermes-agent/venv/bin"
+cat >"/etc/profile.d/hermes.sh" <<PROFILE
+export PATH="${HERMES_BIN}:\$PATH"
+PROFILE
+chmod +x "/etc/profile.d/hermes.sh"
+# Also add to the hermes user's .bashrc for interactive shells
+HERMES_BASHRC="${HERMES_HOME}/../.bashrc"
+if [[ "${HERMES_USER}" != "root" ]]; then
+  HERMES_BASHRC="/home/${HERMES_USER}/.bashrc"
+else
+  HERMES_BASHRC="/root/.bashrc"
+fi
+if ! grep -q "${HERMES_BIN}" "${HERMES_BASHRC}" 2>/dev/null; then
+  echo "export PATH=\"${HERMES_BIN}:\$PATH\"" >> "${HERMES_BASHRC}"
+fi
+
 echo "[hermes-bootstrap] Rendering templates"
 export HERMES_HOME
 run_as_hermes "cd '${HERMES_HOME}' && HERMES_HOME='${HERMES_HOME}' python3 ./scripts/render_templates.py"

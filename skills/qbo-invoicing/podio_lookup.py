@@ -242,11 +242,12 @@ def search_items(query: str) -> list[dict]:
     return deduped
 
 
-def list_recent(limit: int = 10) -> list[dict]:
-    """List recent items across all connected apps."""
+def list_recent(limit: int = 10, max_apps: int = 10) -> list[dict]:
+    """List recent items across connected apps (capped to avoid excessive API calls)."""
     all_items = []
-    per_app = max(limit, limit * len(APP_IDS)) if len(APP_IDS) > 1 else limit
-    for app_id in APP_IDS:
+    app_ids = APP_IDS[:max_apps]
+    per_app = max(1, limit // len(app_ids)) if len(app_ids) > 1 else limit
+    for app_id in app_ids:
         resp = requests.post(
             f"{PODIO_API}/item/app/{app_id}/filter/",
             headers=_headers(),
