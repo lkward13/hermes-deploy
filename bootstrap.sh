@@ -154,8 +154,15 @@ EOF
   fi
 fi
 
-echo "[hermes-bootstrap] Installing nightly auto-pull cron"
-CRON_JOB="0 3 * * * cd ${HERMES_HOME} && git pull origin main --ff-only >> ${HERMES_HOME}/auto-pull.log 2>&1"
-(crontab -l 2>/dev/null | grep -v "git pull origin main"; echo "$CRON_JOB") | crontab -
+echo "[hermes-bootstrap] Tuning filesystem error behavior"
+ROOT_DEV=$(findmnt -n -o SOURCE / 2>/dev/null || true)
+if [[ -n "${ROOT_DEV}" ]]; then
+  tune2fs -e continue "${ROOT_DEV}" 2>/dev/null || true
+fi
+
+echo "[hermes-bootstrap] Installing cron jobs"
+WATCHDOG_JOB="* * * * * if ! touch /root/.hermes/.rw_check 2>/dev/null; then mount -o remount,rw / 2>/dev/null; kill \$(cat ${HERMES_HOME}/bootstrap_gateway.pid 2>/dev/null) 2>/dev/null; sleep 1; cd ${HERMES_HOME} && nohup ./start-hermes-gateway.sh > ${HERMES_HOME}/gateway.log 2>&1 & echo \$! > ${HERMES_HOME}/bootstrap_gateway.pid; fi"
+PULL_JOB="0 3 * * * mount -o remount,rw / 2>/dev/null; cd ${HERMES_HOME} && git fetch origin main && git reset --hard origin/main && python3 ./scripts/render_templates.py >> ${HERMES_HOME}/auto-pull.log 2>&1"
+(crontab -l 2>/dev/null | grep -v "rw_check\|git fetch origin main"; echo "$WATCHDOG_JOB"; echo "$PULL_JOB") | crontab -
 
 echo "[hermes-bootstrap] Complete"
