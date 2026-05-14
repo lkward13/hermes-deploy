@@ -66,10 +66,10 @@ DEFAULTS = {
     "QBO_REDIRECT_URI": "",
     "QBO_REFRESH_TOKEN": "",
     "PODIO_APP_ID": "",
+    "PODIO_ACCESS_TOKEN": "",
     "PODIO_CLIENT_ID": "",
     "PODIO_CLIENT_SECRET": "",
-    "PODIO_PASSWORD": "",
-    "PODIO_USERNAME": "",
+    "PODIO_REFRESH_TOKEN": "",
 }
 
 

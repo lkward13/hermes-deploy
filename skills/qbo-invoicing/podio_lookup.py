@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Look up leads/jobs across all connected Podio apps.
+Look up leads/jobs in the configured Podio app.
 
 Usage:
     python3 podio_lookup.py --search "Devin Burchett"
@@ -16,33 +16,16 @@ import json
 import os
 import re
 import sys
+import time
+from pathlib import Path
 
 import requests
-
-from podio_access import get_podio_access_token, load_hermes_env
 
 PODIO_API = "https://api.podio.com"
 TIMEOUT = 15
 
-
-def _load_app_ids() -> list[int]:
-    """Return all Podio app IDs from PODIO_APPS_JSON, falling back to PODIO_APP_ID."""
-    load_hermes_env()
-    raw = os.environ.get("PODIO_APPS_JSON", "").strip().strip("'\"")
-    if raw and raw != "[]":
-        try:
-            apps = json.loads(raw)
-            ids = [int(a["app_id"]) for a in apps if a.get("app_id")]
-            if ids:
-                return ids
-        except (json.JSONDecodeError, KeyError, ValueError):
-            pass
-    single = int(os.environ.get("PODIO_APP_ID", "0") or "0")
-    return [single] if single else []
-
-
-APP_IDS = _load_app_ids()
-APP_ID = APP_IDS[0] if APP_IDS else 0  # kept for backward compat
+# Set PODIO_APP_ID for each client if this skill is enabled.
+APP_ID = int(os.environ.get("PODIO_APP_ID", "30724222") or "30724222")
 
 FIELDS = {
     "name": 276836610,
@@ -62,20 +45,135 @@ STATUS_OPTIONS = {
 }
 STATUS_IDS_TO_TEXT = {v: k for k, v in STATUS_OPTIONS.items()}
 
+_token_cache = {"access_token": None, "expires_at": 0}
 
-def get_access_token() -> str:
-    try:
-        return get_podio_access_token()
-    except RuntimeError as exc:
-        print(str(exc), file=sys.stderr)
+
+def _load_env():
+    env_path = Path.home() / ".hermes" / ".env"
+    if not env_path.exists():
+        print(f"Error: {env_path} not found", file=sys.stderr)
         sys.exit(1)
 
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" in line:
+            key, _, value = line.partition("=")
+            value = value.strip().strip("'\"")
+            os.environ.setdefault(key.strip(), value)
 
-def _headers():
+
+def _get_creds():
+    _load_env()
+    required = ["PODIO_CLIENT_ID", "PODIO_CLIENT_SECRET", "PODIO_USERNAME", "PODIO_PASSWORD"]
+    missing = [k for k in required if not os.environ.get(k)]
+    if missing:
+        print(f"Error: Missing env vars: {', '.join(missing)}", file=sys.stderr)
+        sys.exit(1)
+    return {k: os.environ[k] for k in required}
+
+
+def _refresh_oauth_token() -> str:
+    """Refresh the Podio OAuth access token using the refresh token."""
+    _load_env()
+    refresh_token = os.environ.get("PODIO_REFRESH_TOKEN", "")
+    client_id = os.environ.get("PODIO_CLIENT_ID", "")
+    client_secret = os.environ.get("PODIO_CLIENT_SECRET", "")
+    if not (refresh_token and client_id and client_secret):
+        return ""
+    resp = requests.post(
+        "https://podio.com/oauth/token",
+        data={
+            "grant_type": "refresh_token",
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "refresh_token": refresh_token,
+        },
+        timeout=TIMEOUT,
+    )
+    if resp.status_code != 200:
+        return ""
+    data = resp.json()
+    new_token = data.get("access_token", "")
+    if new_token:
+        # Update env file so next call uses the fresh token
+        env_path = Path.home() / ".hermes" / ".env"
+        if env_path.exists():
+            content = env_path.read_text()
+            content = re.sub(
+                r"^(PODIO_ACCESS_TOKEN=)['\"]?[^'\"\n]*['\"]?",
+                f"PODIO_ACCESS_TOKEN='{new_token}'",
+                content,
+                flags=re.MULTILINE,
+            )
+            env_path.write_text(content)
+        os.environ["PODIO_ACCESS_TOKEN"] = new_token
+        _token_cache["access_token"] = new_token
+        _token_cache["expires_at"] = time.time() + data.get("expires_in", 28800)
+    return new_token
+
+
+def get_access_token() -> str:
+    _load_env()
+    # Use OAuth token from env if available (set via NoDesk portal OAuth flow)
+    oauth_token = os.environ.get("PODIO_ACCESS_TOKEN", "")
+    if oauth_token:
+        return oauth_token
+
+    now = time.time()
+    if _token_cache["access_token"] and _token_cache["expires_at"] - now > 60:
+        return _token_cache["access_token"]
+
+    creds = _get_creds()
+    resp = requests.post(
+        "https://podio.com/oauth/token",
+        data={
+            "grant_type": "password",
+            "client_id": creds["PODIO_CLIENT_ID"],
+            "client_secret": creds["PODIO_CLIENT_SECRET"],
+            "username": creds["PODIO_USERNAME"],
+            "password": creds["PODIO_PASSWORD"],
+        },
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        timeout=TIMEOUT,
+    )
+
+    if resp.status_code != 200:
+        print(f"Auth failed ({resp.status_code}): {resp.text}", file=sys.stderr)
+        sys.exit(1)
+
+    data = resp.json()
+    _token_cache["access_token"] = data["access_token"]
+    _token_cache["expires_at"] = now + data.get("expires_in", 3600)
+    return data["access_token"]
+
+
+def _headers(token: str | None = None):
     return {
-        "Authorization": f"OAuth2 {get_access_token()}",
+        "Authorization": f"OAuth2 {token or get_access_token()}",
         "Content-Type": "application/json",
     }
+
+
+def _api_post(url: str, payload: dict) -> dict:
+    """POST to Podio API with automatic token refresh on 401."""
+    resp = requests.post(url, json=payload, headers=_headers(), timeout=TIMEOUT)
+    if resp.status_code == 401:
+        new_token = _refresh_oauth_token()
+        if new_token:
+            resp = requests.post(url, json=payload, headers=_headers(new_token), timeout=TIMEOUT)
+    return resp
+
+
+def _api_put(url: str, payload) -> dict:
+    """PUT to Podio API with automatic token refresh on 401."""
+    resp = requests.put(url, json=payload, headers=_headers(), timeout=TIMEOUT)
+    if resp.status_code == 401:
+        new_token = _refresh_oauth_token()
+        if new_token:
+            resp = requests.put(url, json=payload, headers=_headers(new_token), timeout=TIMEOUT)
+    return resp
 
 
 def _normalize_phone(raw: str) -> str:
@@ -112,7 +210,6 @@ def _extract_field_value(field: dict) -> str:
 def _parse_item(item: dict) -> dict:
     result = {
         "item_id": item.get("item_id"),
-        "app_id": item.get("app", {}).get("app_id"),
         "title": item.get("title", ""),
         "name": "",
         "phone": "",
@@ -151,16 +248,21 @@ def _phone_variants(query: str) -> list[str]:
     return list(variants)
 
 
-def _fetch_all_items_from_app(app_id: int, limit: int = 100) -> list[dict]:
+def _fetch_all_items(limit: int = 100) -> list[dict]:
+    """Fetch items from the app (paginated if needed) for client-side filtering."""
     all_items = []
     offset = 0
     batch_size = min(limit, 100)
+
     while offset < limit:
-        resp = requests.post(
-            f"{PODIO_API}/item/app/{app_id}/filter/",
-            headers=_headers(),
-            json={"sort_by": "created_on", "sort_desc": True, "limit": batch_size, "offset": offset},
-            timeout=TIMEOUT,
+        resp = _api_post(
+            f"{PODIO_API}/item/app/{APP_ID}/filter/",
+            {
+                "sort_by": "created_on",
+                "sort_desc": True,
+                "limit": batch_size,
+                "offset": offset,
+            },
         )
         if resp.status_code != 200:
             break
@@ -171,19 +273,12 @@ def _fetch_all_items_from_app(app_id: int, limit: int = 100) -> list[dict]:
         offset += batch_size
         if len(items) < batch_size:
             break
-    return all_items
 
-
-def _fetch_all_items(limit: int = 100) -> list[dict]:
-    """Fetch items across all connected apps."""
-    all_items = []
-    for app_id in APP_IDS:
-        all_items.extend(_fetch_all_items_from_app(app_id, limit=limit))
     return all_items
 
 
 def search_items(query: str) -> list[dict]:
-    """Search by name or phone across all connected apps."""
+    """Search by name or phone."""
     results = []
 
     if _is_phone_query(query):
@@ -202,36 +297,36 @@ def search_items(query: str) -> list[dict]:
                     results.append(parsed)
                     break
     else:
-        for app_id in APP_IDS:
-            resp = requests.post(
-                f"{PODIO_API}/item/app/{app_id}/filter/",
-                headers=_headers(),
-                json={
-                    "filters": {str(FIELDS["name"]): query},
-                    "limit": 20,
-                    "sort_by": "created_on",
-                    "sort_desc": True,
-                },
-                timeout=TIMEOUT,
+        resp = _api_post(
+            f"{PODIO_API}/item/app/{APP_ID}/filter/",
+            {
+                "filters": {str(FIELDS["name"]): query},
+                "limit": 20,
+                "sort_by": "created_on",
+                "sort_desc": True,
+            },
+        )
+        if resp.status_code == 200:
+            items = resp.json().get("items", [])
+            results.extend(_parse_item(i) for i in items)
+
+        if not results:
+            resp = _api_post(
+                f"{PODIO_API}/search/app/{APP_ID}/",
+                {"query": query, "limit": 20, "ref_type": "item"},
             )
             if resp.status_code == 200:
-                results.extend(_parse_item(i) for i in resp.json().get("items", []))
-
-            if not any(r.get("app_id") == app_id for r in results):
-                resp = requests.post(
-                    f"{PODIO_API}/search/app/{app_id}/",
-                    headers=_headers(),
-                    json={"query": query, "limit": 20, "ref_type": "item"},
-                    timeout=TIMEOUT,
-                )
-                if resp.status_code == 200:
-                    search_data = resp.json()
-                    search_results = search_data if isinstance(search_data, list) else search_data.get("results", [])
-                    item_ids = [r.get("id") for r in search_results if r.get("id")]
-                    for iid in item_ids[:10]:
-                        item_resp = requests.get(f"{PODIO_API}/item/{iid}", headers=_headers(), timeout=TIMEOUT)
-                        if item_resp.status_code == 200:
-                            results.append(_parse_item(item_resp.json()))
+                search_data = resp.json()
+                search_results = search_data if isinstance(search_data, list) else search_data.get("results", [])
+                item_ids = [r.get("id") for r in search_results if r.get("id")]
+                for iid in item_ids[:10]:
+                    item_resp = requests.get(
+                        f"{PODIO_API}/item/{iid}",
+                        headers=_headers(),
+                        timeout=TIMEOUT,
+                    )
+                    if item_resp.status_code == 200:
+                        results.append(_parse_item(item_resp.json()))
 
     seen = set()
     deduped = []
@@ -242,24 +337,20 @@ def search_items(query: str) -> list[dict]:
     return deduped
 
 
-def list_recent(limit: int = 10, max_apps: int = 10) -> list[dict]:
-    """List recent items across connected apps (capped to avoid excessive API calls)."""
-    all_items = []
-    app_ids = APP_IDS[:max_apps]
-    per_app = max(1, limit // len(app_ids)) if len(app_ids) > 1 else limit
-    for app_id in app_ids:
-        resp = requests.post(
-            f"{PODIO_API}/item/app/{app_id}/filter/",
-            headers=_headers(),
-            json={"sort_by": "created_on", "sort_desc": True, "limit": per_app},
-            timeout=TIMEOUT,
-        )
-        if resp.status_code != 200:
-            print(f"Error listing items from app {app_id} ({resp.status_code}): {resp.text}", file=sys.stderr)
-            continue
-        all_items.extend(_parse_item(i) for i in resp.json().get("items", []))
-    all_items.sort(key=lambda x: x.get("date") or "", reverse=True)
-    return all_items[:limit]
+def list_recent(limit: int = 10) -> list[dict]:
+    resp = _api_post(
+        f"{PODIO_API}/item/app/{APP_ID}/filter/",
+        {
+            "sort_by": "created_on",
+            "sort_desc": True,
+            "limit": limit,
+        },
+    )
+    if resp.status_code != 200:
+        print(f"Error listing items ({resp.status_code}): {resp.text}", file=sys.stderr)
+        return []
+    items = resp.json().get("items", [])
+    return [_parse_item(i) for i in items]
 
 
 def update_item_status(item_id: int, status_text: str) -> bool:
@@ -270,11 +361,9 @@ def update_item_status(item_id: int, status_text: str) -> bool:
         return False
 
     option_id = STATUS_OPTIONS[status_text]
-    resp = requests.put(
+    resp = _api_put(
         f"{PODIO_API}/item/{item_id}/value/{FIELDS['invoice_status']}",
-        headers=_headers(),
-        json=option_id,
-        timeout=TIMEOUT,
+        option_id,
     )
 
     if resp.status_code in (200, 204):
@@ -295,7 +384,6 @@ def print_lead(lead: dict, index: int = None):
     print(f"    Date:     {lead['date'] or '(none)'}")
     print(f"    Status:   {status}")
     print(f"    Item ID:  {lead['item_id']}")
-    print(f"    App ID:   {lead.get('app_id') or '(unknown)'}")
     if lead.get("link"):
         print(f"    Link:     {lead['link']}")
     print()

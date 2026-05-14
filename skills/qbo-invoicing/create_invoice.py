@@ -53,7 +53,6 @@ import requests
 
 from qbo_config import get_base_url
 from qbo_auth import get_access_token, get_realm_id
-from podio_access import get_podio_access_token_or_none
 
 
 # ---------------------------------------------------------------------------
@@ -80,6 +79,81 @@ PODIO_STATUS_OPTIONS = {
     "Cancelled": 5,
 }
 
+_podio_token_cache = {"access_token": None, "expires_at": 0}
+
+
+def _load_hermes_env():
+    from pathlib import Path
+    import time as _time
+    env_path = Path.home() / ".hermes" / ".env"
+    if not env_path.exists():
+        return
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" in line:
+            key, _, value = line.partition("=")
+            value = value.strip().strip('"')
+            os.environ.setdefault(key.strip(), value)
+
+
+def _refresh_podio_token() -> str:
+    import time as _time
+    from pathlib import Path as _Path
+    import re as _re
+    _load_hermes_env()
+    refresh_token = os.environ.get("PODIO_REFRESH_TOKEN", "")
+    client_id = os.environ.get("PODIO_CLIENT_ID", "")
+    client_secret = os.environ.get("PODIO_CLIENT_SECRET", "")
+    if not (refresh_token and client_id and client_secret):
+        return ""
+    resp = requests.post(
+        "https://podio.com/oauth/token",
+        data={
+            "grant_type": "refresh_token",
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "refresh_token": refresh_token,
+        },
+        timeout=15,
+    )
+    if resp.status_code != 200:
+        return ""
+    data = resp.json()
+    new_token = data.get("access_token", "")
+    if new_token:
+        env_path = _Path.home() / ".hermes" / ".env"
+        if env_path.exists():
+            content = env_path.read_text()
+            content = _re.sub(
+                r"^(PODIO_ACCESS_TOKEN=)['"]*[^'"
+]*['"]*",
+                f"PODIO_ACCESS_TOKEN='{new_token}'",
+                content, flags=_re.MULTILINE,
+            )
+            env_path.write_text(content)
+        os.environ["PODIO_ACCESS_TOKEN"] = new_token
+        _podio_token_cache["access_token"] = new_token
+        _podio_token_cache["expires_at"] = _time.time() + data.get("expires_in", 28800)
+    return new_token
+
+
+def _get_podio_token() -> str:
+    import time as _time
+    now = _time.time()
+    if _podio_token_cache["access_token"] and _podio_token_cache["expires_at"] - now > 60:
+        return _podio_token_cache["access_token"]
+
+    _load_hermes_env()
+    oauth_token = os.environ.get("PODIO_ACCESS_TOKEN", "")
+    if oauth_token:
+        _podio_token_cache["access_token"] = oauth_token
+        _podio_token_cache["expires_at"] = now + 28800
+        return oauth_token
+
+    return _refresh_podio_token() or ""
+
 
 def update_podio_status(item_id: int, status_text: str) -> bool:
     """Set the Invoice Status on a Podio item after invoice creation."""
@@ -87,7 +161,7 @@ def update_podio_status(item_id: int, status_text: str) -> bool:
         print(f"Warning: Unknown Podio status '{status_text}', skipping update.", file=sys.stderr)
         return False
 
-    token = get_podio_access_token_or_none()
+    token = _get_podio_token()
     if not token:
         print("Warning: Could not authenticate with Podio. Status not updated.", file=sys.stderr)
         return False

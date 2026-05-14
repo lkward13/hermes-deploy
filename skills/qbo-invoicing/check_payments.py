@@ -24,6 +24,7 @@ import json
 import os
 import re
 import sys
+import time
 from pathlib import Path
 
 import requests
@@ -40,19 +41,20 @@ def _load_env():
             continue
         if "=" in line:
             key, _, value = line.partition("=")
-            os.environ.setdefault(key.strip(), value.strip())
+            value = value.strip().strip("'"')
+            os.environ.setdefault(key.strip(), value)
 
 _load_env()
 
 from qbo_config import get_base_url
 from qbo_auth import get_access_token, get_realm_id
-from podio_access import get_podio_access_token_or_none
 
 # ---------------------------------------------------------------------------
 # Podio integration (inline to avoid import issues)
 # ---------------------------------------------------------------------------
 
 PODIO_API = "https://api.podio.com"
+PODIO_APP_ID = 30724222
 PODIO_INVOICE_STATUS_FIELD_ID = 276921460
 PODIO_STATUS_OPTIONS = {
     "New Lead": 1,
@@ -68,19 +70,63 @@ PODIO_FIELDS = {
     "invoice_status": 276921460,
 }
 
-
-def _podio_app_id() -> int:
-    return int(os.environ.get("PODIO_APP_ID", "0") or "0")
+_podio_token_cache = {"access_token": None, "expires_at": 0}
 
 
-def _get_podio_token() -> str | None:
-    return get_podio_access_token_or_none()
+def _refresh_podio_token() -> str:
+    from pathlib import Path as _Path
+    refresh_token = os.environ.get("PODIO_REFRESH_TOKEN", "")
+    client_id = os.environ.get("PODIO_CLIENT_ID", "")
+    client_secret = os.environ.get("PODIO_CLIENT_SECRET", "")
+    if not (refresh_token and client_id and client_secret):
+        return ""
+    resp = requests.post(
+        "https://podio.com/oauth/token",
+        data={
+            "grant_type": "refresh_token",
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "refresh_token": refresh_token,
+        },
+        timeout=15,
+    )
+    if resp.status_code != 200:
+        return ""
+    data = resp.json()
+    new_token = data.get("access_token", "")
+    if new_token:
+        env_path = _Path.home() / ".hermes" / ".env"
+        if env_path.exists():
+            content = env_path.read_text()
+            content = re.sub(
+                r"^(PODIO_ACCESS_TOKEN=)['"]*[^'"
+]*['"]*",
+                f"PODIO_ACCESS_TOKEN='{new_token}'",
+                content, flags=re.MULTILINE,
+            )
+            env_path.write_text(content)
+        os.environ["PODIO_ACCESS_TOKEN"] = new_token
+        _podio_token_cache["access_token"] = new_token
+        _podio_token_cache["expires_at"] = time.time() + data.get("expires_in", 28800)
+    return new_token
+
+
+def _get_podio_token() -> str:
+    now = time.time()
+    if _podio_token_cache["access_token"] and _podio_token_cache["expires_at"] - now > 60:
+        return _podio_token_cache["access_token"]
+
+    oauth_token = os.environ.get("PODIO_ACCESS_TOKEN", "").strip("'"" )
+    if oauth_token:
+        _podio_token_cache["access_token"] = oauth_token
+        _podio_token_cache["expires_at"] = now + 28800
+        return oauth_token
+
+    return _refresh_podio_token() or ""
 
 
 def _podio_headers():
     token = _get_podio_token()
-    if not token:
-        return None
     return {
         "Authorization": f"OAuth2 {token}",
         "Content-Type": "application/json",
@@ -89,12 +135,9 @@ def _podio_headers():
 
 def update_podio_item_status(item_id: int, status_text: str) -> bool:
     option_id = PODIO_STATUS_OPTIONS[status_text]
-    headers = _podio_headers()
-    if not headers:
-        return False
     resp = requests.put(
         f"{PODIO_API}/item/{item_id}/value/{PODIO_INVOICE_STATUS_FIELD_ID}",
-        headers=headers,
+        headers=_podio_headers(),
         json=option_id,
         timeout=15,
     )
@@ -106,16 +149,10 @@ def get_podio_items_with_status(status_text: str) -> list[dict]:
     option_id = PODIO_STATUS_OPTIONS.get(status_text)
     if not option_id:
         return []
-    app_id = _podio_app_id()
-    if not app_id:
-        return []
-    headers = _podio_headers()
-    if not headers:
-        return []
 
     resp = requests.post(
-        f"{PODIO_API}/item/app/{app_id}/filter/",
-        headers=headers,
+        f"{PODIO_API}/item/app/{PODIO_APP_ID}/filter/",
+        headers=_podio_headers(),
         json={
             "filters": {
                 str(PODIO_INVOICE_STATUS_FIELD_ID): [option_id],
