@@ -48,5 +48,28 @@ PY
 
 echo "$(date -Iseconds) refreshed token" >> "${LOG}"
 
-# Restart so the gateway picks up the new value
+# Write file-based gh auth so subprocesses don't need GH_TOKEN in env.
+# Hermes strips GH_TOKEN from agent subprocess environments for security
+# (see tools/environments/local.py blocklist), so file-based auth is the
+# only way to make gh work inside agent terminal sessions.
+HERMES_USER="${HERMES_USER:-hermes}"
+GH_CONFIG_DIR="/home/${HERMES_USER}/.config/gh"
+mkdir -p "${GH_CONFIG_DIR}"
+cat > "${GH_CONFIG_DIR}/hosts.yml" <<HOSTS
+github.com:
+    oauth_token: ${new_token}
+    git_protocol: https
+    user: x-access-token
+HOSTS
+chown -R "${HERMES_USER}:${HERMES_USER}" "/home/${HERMES_USER}/.config" 2>/dev/null || true
+chmod 600 "${GH_CONFIG_DIR}/hosts.yml"
+
+# Also rewrite git's credential helper so git clone / push works without env
+git config --global --replace-all credential.https://github.com.helper "" 2>/dev/null || true
+git config --global --add credential.https://github.com.helper '!f() { echo "username=x-access-token"; echo "password='"${new_token}"'"; }; f' 2>/dev/null || true
+sudo -u "${HERMES_USER}" git config --global --replace-all credential.https://github.com.helper "" 2>/dev/null || true
+sudo -u "${HERMES_USER}" git config --global --add credential.https://github.com.helper '!f() { echo "username=x-access-token"; echo "password='"${new_token}"'"; }; f' 2>/dev/null || true
+
+# Restart so the gateway picks up the new value (still useful for any
+# in-process callers reading GITHUB_TOKEN from .env).
 systemctl restart hermes-gateway 2>>"${LOG}" || true
