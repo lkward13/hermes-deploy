@@ -84,6 +84,15 @@ echo "[hermes-bootstrap] Installing voice extras (TTS + STT)"
 # ~500MB for the default model downloaded on first use).
 run_as_hermes "'${HERMES_HOME}/hermes-agent/venv/bin/pip' install --no-build-isolation edge-tts faster-whisper sounddevice numpy"
 
+echo "[hermes-bootstrap] Installing gh (GitHub CLI)"
+if ! command -v gh >/dev/null 2>&1; then
+  curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null
+  chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list
+  apt-get update -o Acquire::Check-Valid-Until=false -o Acquire::Check-Date=false >/dev/null
+  DEBIAN_FRONTEND=noninteractive apt-get install -y gh 2>&1 | tail -2
+fi
+
 echo "[hermes-bootstrap] Installing Node.js + agent-browser (browser tool)"
 if ! command -v node >/dev/null 2>&1; then
   curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
