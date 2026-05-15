@@ -101,6 +101,9 @@ fi
 if ! command -v agent-browser >/dev/null 2>&1; then
   npm install -g agent-browser
 fi
+if ! command -v codex >/dev/null 2>&1; then
+  npm install -g @openai/codex
+fi
 # Download Chromium + system deps (idempotent — skips if already installed)
 agent-browser install --with-deps || echo "[hermes-bootstrap] WARNING: agent-browser install failed; browser tool will not work until fixed"
 
