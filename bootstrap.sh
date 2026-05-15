@@ -187,8 +187,10 @@ if [[ -n "${ROOT_DEV}" ]]; then
 fi
 
 echo "[hermes-bootstrap] Installing cron jobs"
+chmod +x "${HERMES_HOME}/scripts/refresh_github_token.sh" 2>/dev/null || true
 WATCHDOG_JOB="* * * * * if ! touch /root/.hermes/.rw_check 2>/dev/null; then mount -o remount,rw / 2>/dev/null; kill \$(cat ${HERMES_HOME}/bootstrap_gateway.pid 2>/dev/null) 2>/dev/null; sleep 1; cd ${HERMES_HOME} && nohup ./start-hermes-gateway.sh > ${HERMES_HOME}/gateway.log 2>&1 & echo \$! > ${HERMES_HOME}/bootstrap_gateway.pid; fi"
 PULL_JOB="0 3 * * * mount -o remount,rw / 2>/dev/null; cd ${HERMES_HOME} && git fetch origin main && git reset --hard origin/main && python3 ./scripts/render_templates.py >> ${HERMES_HOME}/auto-pull.log 2>&1"
-(crontab -l 2>/dev/null | grep -v "rw_check\|git fetch origin main"; echo "$WATCHDOG_JOB"; echo "$PULL_JOB") | crontab -
+GITHUB_JOB="*/50 * * * * HERMES_HOME=${HERMES_HOME} ${HERMES_HOME}/scripts/refresh_github_token.sh >> ${HERMES_HOME}/github-token-refresh.log 2>&1"
+(crontab -l 2>/dev/null | grep -v "rw_check\|git fetch origin main\|refresh_github_token"; echo "$WATCHDOG_JOB"; echo "$PULL_JOB"; echo "$GITHUB_JOB") | crontab -
 
 echo "[hermes-bootstrap] Complete"
