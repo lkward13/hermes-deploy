@@ -70,6 +70,12 @@ DEFAULTS = {
     "PODIO_CLIENT_ID": "",
     "PODIO_CLIENT_SECRET": "",
     "PODIO_REFRESH_TOKEN": "",
+    "HERMES_CLIENT_ID": "",
+    "GITHUB_INSTALLATION_ID": "",
+    "GITHUB_ACCOUNT_LOGIN": "",
+    "GITHUB_TOKEN_ENDPOINT": "",
+    "GITHUB_TOKEN": "",
+    "GH_TOKEN": "",
 }
 
 
