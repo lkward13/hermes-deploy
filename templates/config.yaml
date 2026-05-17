@@ -47,11 +47,14 @@ browser:
   # unprivileged user namespaces, so Chrome's sandbox can't initialize).
   chromium_args: ['--no-sandbox']
 image_gen:
-  # Route image generation through the user's Codex/ChatGPT subscription
-  # (gpt-image-2 via the Codex Responses API) rather than fal.ai or a
-  # separate OPENAI_API_KEY. The openai-codex plugin reuses the auth.json
-  # we already wrote during Codex OAuth setup.
-  provider: openai-codex
+  # Provider selection is driven by whether the client has supplied a personal
+  # OPENAI_API_KEY in the NoDesk portal. The gateway sets IMAGE_GEN_PROVIDER
+  # accordingly:
+  #   * "openai"       — uses the API key for gpt-image-2 via OpenAI's REST API.
+  #   * "openai-codex" — reuses the ChatGPT subscription auth.json written
+  #                      during Codex OAuth setup (default; works without an
+  #                      API key but cannot currently target gpt-image-2).
+  provider: {{IMAGE_GEN_PROVIDER}}
   model: gpt-image-2-medium
   fallback_providers: []
 checkpoints:
