@@ -70,6 +70,7 @@ git config --global --add credential.https://github.com.helper '!f() { echo "use
 sudo -u "${HERMES_USER}" git config --global --replace-all credential.https://github.com.helper "" 2>/dev/null || true
 sudo -u "${HERMES_USER}" git config --global --add credential.https://github.com.helper '!f() { echo "username=x-access-token"; echo "password='"${new_token}"'"; }; f' 2>/dev/null || true
 
-# Restart so the gateway picks up the new value (still useful for any
-# in-process callers reading GITHUB_TOKEN from .env).
-systemctl restart hermes-gateway 2>>"${LOG}" || true
+# NOTE: We deliberately do NOT restart hermes-gateway here. The agent reads
+# its GitHub token from ~/.config/gh/hosts.yml (file auth), not from the
+# process environment, so a restart isn't needed — and restarting every
+# 50min interrupted any in-flight conversation with the agent.
