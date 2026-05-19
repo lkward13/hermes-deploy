@@ -76,6 +76,8 @@ DEFAULTS = {
     "GITHUB_TOKEN_ENDPOINT": "",
     "GITHUB_TOKEN": "",
     "GH_TOKEN": "",
+    "OPENAI_API_KEY": "",
+    "IMAGE_GEN_PROVIDER": "openai-codex",
 }
 
 
