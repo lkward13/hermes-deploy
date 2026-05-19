@@ -200,4 +200,21 @@ CODEX_AUTH_JOB="*/55 * * * * HERMES_HOME=${HERMES_HOME} sudo -u ${HERMES_USER} p
 GITHUB_JOB="*/50 * * * * HERMES_HOME=${HERMES_HOME} ${HERMES_HOME}/scripts/refresh_github_token.sh >> ${HERMES_HOME}/github-token-refresh.log 2>&1"
 (crontab -l 2>/dev/null | grep -v "rw_check\|git fetch origin main\|refresh_github_token\|sync_codex_cli_auth"; echo "$WATCHDOG_JOB"; echo "$PULL_JOB"; echo "$GITHUB_JOB"; echo "$CODEX_AUTH_JOB") | crontab -
 
+# Notify NoDesk that bootstrap finished, so it can flip the agent row's
+# status from "bootstrapping" to "active". Without this callback, the
+# status flag stays stuck and credential_sync silently no-ops for the
+# first few minutes after checkout. HERMES_CLIENT_ID was set in env via
+# build_bootstrap_env; we use it as both the URL path and the
+# X-Hermes-Token header (same self-auth pattern as the github token
+# mint endpoint).
+echo "[hermes-bootstrap] Notifying NoDesk that bootstrap finished"
+if [[ -n "${HERMES_CLIENT_ID:-}" && -n "${NODESK_BASE_URL:-}" ]]; then
+  curl -fsS --max-time 15 -X POST \
+    -H "X-Hermes-Token: ${HERMES_CLIENT_ID}" \
+    "${NODESK_BASE_URL}/api/agent/${HERMES_CLIENT_ID}/bootstrap-complete" \
+    || echo "[hermes-bootstrap] WARNING: bootstrap-complete callback failed; admin status will stay 'bootstrapping' until manually flipped"
+else
+  echo "[hermes-bootstrap] HERMES_CLIENT_ID or NODESK_BASE_URL not set; skipping callback"
+fi
+
 echo "[hermes-bootstrap] Complete"
