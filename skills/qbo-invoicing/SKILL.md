@@ -1,16 +1,16 @@
 ---
 name: qbo-invoicing
-description: Create, text, and manage QuickBooks Online invoices with optional Podio lookup/status tracking.
-version: 1.0.0
+description: Create, text, and manage QuickBooks Online invoices. Pairs with the podio skill for lead-status tracking.
+version: 1.1.0
 author: NoDesk
 metadata:
   hermes:
-    tags: [QBO, invoicing, Podio, SMS, payments]
+    tags: [QBO, invoicing, SMS, payments]
 ---
 
 # QBO Invoicing
 
-Create, send, inspect, and delete QuickBooks Online invoices. Optionally look up jobs/leads in Podio, update invoice status, and send payment links by SMS through ClickSend.
+Create, send, inspect, and delete QuickBooks Online invoices and send payment links by SMS through ClickSend. For Podio lead lookup and status updates, use the standalone `podio` skill at `skills/podio/`; this skill only writes Podio status as a follow-up to invoice events (via inline API calls — no Python import of the podio skill).
 
 ## Environment
 
@@ -29,12 +29,7 @@ Required for SMS:
 - `CLICKSEND_API_KEY`
 - `CLICKSEND_FROM`
 
-Required for Podio:
-
-- `PODIO_CLIENT_ID`
-- `PODIO_CLIENT_SECRET`
-- `PODIO_ACCESS_TOKEN` (OAuth — auto-refreshes via `PODIO_REFRESH_TOKEN`)
-- `PODIO_APP_ID`
+For Podio status updates after invoice creation (`--podio-item-id` flag), the QBO scripts read the same Podio env vars (`PODIO_CLIENT_ID`, `PODIO_CLIENT_SECRET`, `PODIO_ACCESS_TOKEN`, `PODIO_REFRESH_TOKEN`, `PODIO_APP_ID`) — see the `podio` skill for details.
 
 ## Create Invoice
 
@@ -69,11 +64,11 @@ python3 create_invoice.py \
   --podio-item-id 123456789
 ```
 
-Look up Podio leads/jobs:
+Look up Podio leads/jobs — use the `podio` skill (not this one):
 
 ```bash
-python3 podio_lookup.py --search "Customer Name" --json
-python3 podio_lookup.py --list-recent --limit 20
+python3 ~/.hermes/skills/podio/podio_lookup.py --search "Customer Name" --json
+python3 ~/.hermes/skills/podio/podio_lookup.py --list-recent --limit 20
 ```
 
 ## Payment Checks
