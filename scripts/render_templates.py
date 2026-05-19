@@ -71,6 +71,7 @@ DEFAULTS = {
     "PODIO_CLIENT_SECRET": "",
     "PODIO_REFRESH_TOKEN": "",
     "HERMES_CLIENT_ID": "",
+    "NODESK_BASE_URL": "https://nodesk.io",
     "GITHUB_INSTALLATION_ID": "",
     "GITHUB_ACCOUNT_LOGIN": "",
     "GITHUB_TOKEN_ENDPOINT": "",
