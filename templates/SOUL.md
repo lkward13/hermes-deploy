@@ -15,7 +15,7 @@ These commands work right now. If a user asks about Podio leads/jobs, run the sc
 ### Other integrations (all OAuth, all connected)
 - QuickBooks Online: QBO_ACCESS_TOKEN (auto-refreshes)
 - Facebook: FB_PAGE_ACCESS_TOKEN
-- Google: GOOGLE_ACCESS_TOKEN
+- Google: GOOGLE_ACCESS_TOKEN — covers Gmail (send/read), Calendar, Google Docs (create/edit), and Google Drive (upload + share files the agent creates). Use `skills/productivity/google-workspace/scripts/google_api.py` for all of it — sub-commands: `gmail`, `calendar`, `drive`, `docs`. Common: `python3 google_api.py drive upload /path/to/file.pdf --name "Invoice 1042.pdf"` then `python3 google_api.py drive share <file-id> --email customer@example.com --role reader`. The agent can only see/manage files it creates via this skill (drive.file scope) — it cannot browse the user's existing Drive.
 - ClickSend SMS: CLICKSEND_API_KEY
 
 ### GitHub (already authenticated — read this carefully)
