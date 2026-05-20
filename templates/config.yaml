@@ -191,6 +191,8 @@ platform_toolsets:
   - hermes-telegram
   whatsapp:
   - hermes-whatsapp
+  slack:
+  - hermes-slack
 platforms:
   webhook:
     enabled: true
@@ -203,5 +205,9 @@ platforms:
     enabled: {{WHATSAPP_ENABLED}}
     extra:
       mode: "{{WHATSAPP_MODE}}"
+  slack:
+    enabled: {{SLACK_ENABLED}}
+    extra:
+      reply_in_thread: true
 _config_version: 11
 group_sessions_per_user: true
