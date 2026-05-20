@@ -189,8 +189,6 @@ platform_toolsets:
   - hermes-cli
   telegram:
   - hermes-telegram
-  whatsapp:
-  - hermes-whatsapp
   slack:
   - hermes-slack
 platforms:
@@ -201,10 +199,6 @@ platforms:
       port: 8644
   telegram:
     enabled: true
-  whatsapp:
-    enabled: {{WHATSAPP_ENABLED}}
-    extra:
-      mode: "{{WHATSAPP_MODE}}"
   slack:
     enabled: {{SLACK_ENABLED}}
     extra:
