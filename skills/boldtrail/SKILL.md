@@ -16,11 +16,11 @@ Read and write contacts in the customer's BoldTrail account. Authenticates via t
 
 This skill reads credentials from `$HOME/.hermes/.env`:
 
-- `BOLDTRAIL_API_TOKEN` (primary) — set by NoDesk's credential sync when the customer connects BoldTrail
+- `BOLDTRAIL_API_TOKEN` (primary) — set by NoDesk's credential sync when the customer connects BoldTrail. This is a **JWT** issued by Inside Real Estate.
 - `BOLDTRAIL_ACCESS_TOKEN` (fallback, same value — legacy duplicate)
-- `BOLDTRAIL_API_BASE` (optional override) — defaults to `https://app.boldtrail.com/api/v2`
+- `BOLDTRAIL_API_BASE` (optional override) — defaults to `https://api.kvcore.com/v2/public`
 
-The script tries `Authorization: Bearer <token>` first; if BoldTrail rejects with 401 on a method that should authenticate, it retries with `X-API-Token: <token>` automatically. Whichever works is cached for the rest of the process.
+BoldTrail is built on kvCORE under the hood (Inside Real Estate rebranded kvCORE → BoldTrail; the API host stayed `api.kvcore.com`). Auth header is always `Authorization: Bearer <JWT>`. Spec lives at https://developer.insiderealestate.com/publicv2/docs/api-standards.
 
 ## Commands
 
@@ -81,5 +81,12 @@ Add `--json` to any command to get structured output instead of human-formatted 
 
 ## Notes for the LLM
 
-- BoldTrail's REST API spec is not publicly documented without an Inside Real Estate developer-portal account. The endpoint paths below are best-guesses based on common REST conventions. If a command returns 404, check whether the actual path differs — adjust `BOLDTRAIL_API_BASE` or open a PR with corrected paths.
+- The underlying API is kvCORE Public API V2. Endpoint shapes verified against the official docs at https://developer.insiderealestate.com/publicv2:
+  - `GET /contacts?filter[<field>]=<value>` for search/list
+  - `GET /contact/{id}` for one contact (note: **singular**, unlike list)
+  - `POST /contact` to create
+  - `PUT /contact/{id}` to update
+- Known-good filter keys from the docs: `filter[email]`, `filter[registered_after]` (unix timestamp), `filter[assigned_agent_id]`, `filter[hashtags][]` (tags — repeat the param for multiple). For free-form name search the script tries `filter[name]`, `filter[first_name]`, and `filter[last_name]` in sequence and merges results.
+- Pagination: `page` + `limit` params. Default `limit=100`, max `500`.
+- Tags are called **hashtags** in kvCORE filters; the script sends both `hashtags` and `tags` keys on create/update so it survives either naming convention.
 - BoldTrail/Inside Real Estate is reportedly building an MCP server. When it ships, this skill can be replaced by direct MCP tool calls; the SKILL.md will get updated then.

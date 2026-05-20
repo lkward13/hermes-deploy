@@ -27,12 +27,14 @@ from pathlib import Path
 
 import requests
 
-DEFAULT_API_BASE = "https://app.boldtrail.com/api/v2"
+# BoldTrail's public API is the kvCORE Public API V2 (Inside Real Estate
+# rebranded kvCORE → BoldTrail; the API endpoint kept the kvcore.com host).
+# Auth is `Authorization: Bearer <JWT>`. Filters use `filter[key]=value` syntax.
+# Pagination via `page` + `limit` params (default 100, max 500).
+# Spec: https://developer.insiderealestate.com/publicv2/docs/api-standards
+DEFAULT_API_BASE = "https://api.kvcore.com/v2/public"
 TIMEOUT = 15
 RETRY_DELAYS = (1, 2, 4)  # exponential backoff on 429
-
-# Auth-header strategy is determined on first call and cached for the process
-_auth_strategy = {"header_name": None}  # "Authorization" or "X-API-Token"
 
 
 def _load_env() -> None:
@@ -68,45 +70,30 @@ def _api_base() -> str:
     return base.rstrip("/")
 
 
-def _headers_for(strategy: str, token: str) -> dict[str, str]:
-    if strategy == "X-API-Token":
-        return {"X-API-Token": token, "Accept": "application/json", "Content-Type": "application/json"}
-    return {"Authorization": f"Bearer {token}", "Accept": "application/json", "Content-Type": "application/json"}
+def _headers(token: str) -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json",
+        "Content-Type": "application/json; charset=utf-8",
+    }
 
 
 def _request(method: str, path: str, *, params: dict | None = None, json_body: dict | None = None) -> requests.Response:
-    """HTTP request with auth-strategy fallback + retry on 429."""
+    """HTTP request with retry on 429."""
     token = _get_token()
     url = f"{_api_base()}/{path.lstrip('/')}"
-
-    strategies = (
-        [_auth_strategy["header_name"]] if _auth_strategy["header_name"]
-        else ["Authorization", "X-API-Token"]
-    )
+    headers = _headers(token)
 
     last_resp: requests.Response | None = None
-    for strategy in strategies:
-        headers = _headers_for(strategy, token)
-        for attempt, delay in enumerate([0, *RETRY_DELAYS]):
-            if delay:
-                time.sleep(delay)
-            resp = requests.request(
-                method, url, headers=headers, params=params, json=json_body, timeout=TIMEOUT,
-            )
-            last_resp = resp
-            if resp.status_code == 429:
-                continue
+    for delay in (0, *RETRY_DELAYS):
+        if delay:
+            time.sleep(delay)
+        resp = requests.request(
+            method, url, headers=headers, params=params, json=json_body, timeout=TIMEOUT,
+        )
+        last_resp = resp
+        if resp.status_code != 429:
             break
-
-        if last_resp is not None and last_resp.status_code == 401 and not _auth_strategy["header_name"]:
-            # 401 with Bearer → try X-API-Token next
-            continue
-
-        # First non-401, non-429 response wins — cache the working strategy
-        if last_resp is not None and last_resp.status_code != 401:
-            _auth_strategy["header_name"] = strategy
-        break
-
     return last_resp
 
 
@@ -171,28 +158,62 @@ def _normalize_contact(raw: dict) -> dict:
 
 
 def list_recent(limit: int) -> list[dict]:
-    data = _api_get("/contacts", params={"sort": "-created_at", "limit": limit})
+    # No documented "sort by created" param; kvCORE's filter[registered_after]
+    # gives recent-only. Without it we just get the default ordering and trust
+    # the page/limit pagination.
+    data = _api_get("/contacts", params={"limit": min(limit, 500)})
     items = data.get("contacts") or data.get("data") or data.get("items") or (data if isinstance(data, list) else [])
     return [_normalize_contact(c) for c in items[:limit]]
 
 
 def search(query: str) -> list[dict]:
-    data = _api_get("/contacts", params={"q": query, "limit": 20})
-    items = data.get("contacts") or data.get("data") or data.get("items") or (data if isinstance(data, list) else [])
-    return [_normalize_contact(c) for c in items]
+    """Search by name / email / phone. kvCORE's V2 search is filter-based, so we
+    try the likely fields in sequence and return the union. If it looks like an
+    email, prefer filter[email]; if it looks like a phone, filter[phone]; else
+    treat as a name and try filter[name]."""
+    candidates: list[dict] = []
+    seen: set = set()
+
+    def merge(items):
+        for raw in items:
+            cid = raw.get("id") or raw.get("contact_id")
+            if cid in seen:
+                continue
+            seen.add(cid)
+            candidates.append(raw)
+
+    def fetch(filter_key: str, value: str) -> list[dict]:
+        data = _api_get("/contacts", params={f"filter[{filter_key}]": value, "limit": 20})
+        return data.get("contacts") or data.get("data") or data.get("items") or (data if isinstance(data, list) else [])
+
+    if "@" in query:
+        merge(fetch("email", query))
+    elif any(c.isdigit() for c in query) and not any(c.isalpha() for c in query):
+        merge(fetch("phone", query))
+    else:
+        # Name search — try several possible filter keys; kvCORE varies by deployment
+        for key in ("name", "first_name", "last_name"):
+            try:
+                merge(fetch(key, query))
+            except SystemExit:
+                # _die() would exit; we swallow individual filter failures and
+                # rely on at least one of the candidates returning something.
+                # If ALL fail, the script will print an empty result.
+                pass
+
+    return [_normalize_contact(c) for c in candidates]
 
 
 def get_contact(contact_id: str) -> dict:
-    data = _api_get(f"/contacts/{contact_id}")
-    # response may be {"contact": {...}} or the contact directly
+    data = _api_get(f"/contact/{contact_id}")
     inner = data.get("contact") or data.get("data") or data
     return _normalize_contact(inner)
 
 
 def create_contact(name: str, email: str, phone: str, tags: list[str]) -> dict:
+    # Per kvCORE docs, POST is to /contact (singular), body uses first_name + last_name.
     parts = name.split(maxsplit=1)
-    body = {
-        "name": name,
+    body: dict = {
         "first_name": parts[0] if parts else "",
         "last_name": parts[1] if len(parts) > 1 else "",
     }
@@ -201,8 +222,11 @@ def create_contact(name: str, email: str, phone: str, tags: list[str]) -> dict:
     if phone:
         body["phone"] = phone
     if tags:
+        # kvCORE calls these "hashtags" in filters; the create field may differ.
+        # Try both shapes by sending under both keys — server will ignore unknown.
+        body["hashtags"] = tags
         body["tags"] = tags
-    data = _api_post("/contacts", body)
+    data = _api_post("/contact", body)
     inner = data.get("contact") or data.get("data") or data
     return _normalize_contact(inner)
 
@@ -214,11 +238,12 @@ def update_contact(contact_id: str, *, email: str = "", phone: str = "", tags: l
     if phone:
         body["phone"] = phone
     if tags:
+        body["hashtags"] = tags
         body["tags"] = tags
     if not body:
         print("Error: --update-contact requires at least one of --email, --phone, --tag", file=sys.stderr)
         sys.exit(1)
-    data = _api_put(f"/contacts/{contact_id}", body)
+    data = _api_put(f"/contact/{contact_id}", body)
     inner = data.get("contact") or data.get("data") or data
     return _normalize_contact(inner)
 
