@@ -75,6 +75,7 @@ fi
 echo "[hermes-bootstrap] Creating virtualenv"
 run_as_hermes "python3 -m venv '${HERMES_HOME}/hermes-agent/venv'"
 run_as_hermes "'${HERMES_HOME}/hermes-agent/venv/bin/python' -m pip install --upgrade pip wheel setuptools"
+run_as_hermes "'${HERMES_HOME}/hermes-agent/venv/bin/python' -m pip install slack-bolt slack-sdk"
 run_as_hermes "cd '${HERMES_HOME}/hermes-agent' && '${HERMES_HOME}/hermes-agent/venv/bin/pip' install -e ."
 run_as_hermes "'${HERMES_HOME}/hermes-agent/venv/bin/pip' install python-dotenv requests python-telegram-bot"
 
