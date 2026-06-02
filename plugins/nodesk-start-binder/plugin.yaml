@@ -1,0 +1,6 @@
+name: nodesk-start-binder
+version: "1.0.0"
+description: Intercept the customer's first /start message, bind their Telegram chat_id to the NoDesk client, and send the welcome message in-channel.
+author: NoDesk
+provides_hooks:
+  - pre_gateway_dispatch

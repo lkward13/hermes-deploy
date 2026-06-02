@@ -140,6 +140,7 @@ skills:
 plugins:
   enabled:
   - codex-auth-router
+  - nodesk-start-binder
   disabled: []
 curator:
   enabled: true
