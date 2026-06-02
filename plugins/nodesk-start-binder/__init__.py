@@ -45,8 +45,10 @@ def register(ctx):
 
 def handle_start_message(event, gateway, **_kwargs):
     text = (getattr(event, "text", None) or "").strip()
+    logger.info("nodesk-start-binder: pre_gateway_dispatch invoked, text=%r", text[:80])
     match = START_PATTERN.match(text)
     if not match:
+        logger.info("nodesk-start-binder: text does not match /start <token> pattern")
         return None
 
     token = match.group(1)
