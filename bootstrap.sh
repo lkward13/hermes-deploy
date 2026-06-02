@@ -61,7 +61,12 @@ echo "[hermes-bootstrap] Cloning deploy repo"
 if [[ -d "${HERMES_HOME}/.git" ]]; then
   run_as_hermes "cd '${HERMES_HOME}' && git fetch origin && git checkout '${HERMES_DEPLOY_REF}'"
 else
-  rm -rf "${HERMES_HOME:?}"/*
+  # NoDesk's credential_sync may have raced ahead and written
+  # /home/hermes/.hermes/.env before this script reached the clone step.
+  # `rm -rf .../*` misses dotfiles (.env, .codex/, etc.), so git clone
+  # would fail with "destination ... not empty". Nuke the dir entirely;
+  # render_templates.py re-creates .env from env vars later in this script.
+  rm -rf "${HERMES_HOME:?}"
   run_as_hermes "git clone '${HERMES_DEPLOY_REPO}' '${HERMES_HOME}' && cd '${HERMES_HOME}' && git checkout '${HERMES_DEPLOY_REF}'"
 fi
 
