@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Look up orders, customers, items, payments, and employees in the configured
-Clover merchant via the Clover REST API.
+Look up and manage customers, orders, items, payments, and employees in the
+configured Clover merchant via the Clover REST API.
 
 Usage:
     python3 clover_lookup.py --merchant-info
@@ -9,6 +9,7 @@ Usage:
     python3 clover_lookup.py --get-order ORDER_ID
     python3 clover_lookup.py --list-customers [--limit 50]
     python3 clover_lookup.py --search-customer "Devin"
+    python3 clover_lookup.py --create-customer --first-name John --last-name Doe [--email j@x.com] [--phone 5551234567]
     python3 clover_lookup.py --list-items [--limit 200]
     python3 clover_lookup.py --list-payments [--limit 20]
     python3 clover_lookup.py --list-employees
@@ -200,6 +201,31 @@ def search_customer(query: str, as_json: bool) -> None:
         print(f"- {c.get('id')}  {name}  {phones}  {emails}")
 
 
+def create_customer(first_name: str, last_name: str, email: str | None, phone: str | None, as_json: bool) -> None:
+    if not first_name and not last_name:
+        print("error: at least one of --first-name or --last-name is required.", file=sys.stderr)
+        sys.exit(1)
+    body: dict = {}
+    if first_name:
+        body["firstName"] = first_name
+    if last_name:
+        body["lastName"] = last_name
+    if email:
+        body["emailAddresses"] = {"elements": [{"emailAddress": email}]}
+    if phone:
+        body["phoneNumbers"] = {"elements": [{"phoneNumber": phone}]}
+    data = _request("POST", "/customers", json_body=body)
+    if as_json:
+        print(json.dumps(data, indent=2))
+        return
+    name = " ".join(filter(None, [data.get("firstName"), data.get("lastName")])) or "(unnamed)"
+    print(f"Created customer: {data.get('id')}  {name}")
+    if email:
+        print(f"  email : {email}")
+    if phone:
+        print(f"  phone : {phone}")
+
+
 def list_items(limit: int, as_json: bool) -> None:
     data = _request("GET", "/items", params={"limit": limit})
     elements = data.get("elements", [])
@@ -252,10 +278,15 @@ def main() -> int:
     g.add_argument("--get-order", metavar="ORDER_ID", help="Get a single order with line items + payments")
     g.add_argument("--list-customers", action="store_true", help="List customers")
     g.add_argument("--search-customer", metavar="QUERY", help="Search customers by name, phone, or email")
+    g.add_argument("--create-customer", action="store_true", help="Create a new customer")
     g.add_argument("--list-items", action="store_true", help="List inventory items")
     g.add_argument("--list-payments", action="store_true", help="List recent payments")
     g.add_argument("--list-employees", action="store_true", help="List employees")
 
+    parser.add_argument("--first-name", default="", help="Customer first name (for --create-customer)")
+    parser.add_argument("--last-name", default="", help="Customer last name (for --create-customer)")
+    parser.add_argument("--email", default="", help="Customer email (for --create-customer)")
+    parser.add_argument("--phone", default="", help="Customer phone (for --create-customer)")
     parser.add_argument("--limit", type=int, default=20, help="Page size for list commands (default 20, max 1000)")
     parser.add_argument("--json", action="store_true", help="Print raw JSON instead of summary")
     args = parser.parse_args()
@@ -273,6 +304,8 @@ def main() -> int:
             list_customers(limit, args.json)
         elif args.search_customer:
             search_customer(args.search_customer, args.json)
+        elif args.create_customer:
+            create_customer(args.first_name, args.last_name, args.email or None, args.phone or None, args.json)
         elif args.list_items:
             list_items(limit, args.json)
         elif args.list_payments:
