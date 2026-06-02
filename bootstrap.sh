@@ -168,11 +168,18 @@ WantedBy=multi-user.target
 EOF
 
   systemctl daemon-reload
-  systemctl enable --now hermes-gateway.service
+  # In TEMPLATE_MODE we install the unit so the golden snapshot has it,
+  # but we don't start it (.env has no customer creds yet). first_boot.sh
+  # enables+starts the service per customer.
+  if [[ "${TEMPLATE_MODE:-false}" == "true" ]]; then
+    echo "[hermes-bootstrap] TEMPLATE_MODE — systemd unit installed but not started"
+  else
+    systemctl enable --now hermes-gateway.service
 
-  echo "[hermes-bootstrap] Waiting for service"
-  sleep 5
-  systemctl --no-pager --full status hermes-gateway.service
+    echo "[hermes-bootstrap] Waiting for service"
+    sleep 5
+    systemctl --no-pager --full status hermes-gateway.service
+  fi
 else
   echo "[hermes-bootstrap] systemctl unavailable; starting Hermes gateway with nohup"
   cat >"${HERMES_HOME}/start-hermes-gateway.sh" <<EOF
@@ -198,6 +205,17 @@ echo "[hermes-bootstrap] Tuning filesystem error behavior"
 ROOT_DEV=$(findmnt -n -o SOURCE / 2>/dev/null || true)
 if [[ -n "${ROOT_DEV}" ]]; then
   tune2fs -e continue "${ROOT_DEV}" 2>/dev/null || true
+fi
+
+# Template-mode exit: golden snapshot build wants everything heavy
+# (apt, venv, pip, gh, node, codex CLI) baked in, but NOT customer
+# crons or the bootstrap-complete callback. Write the sentinel
+# build_template_snapshot.py polls for, then bail.
+if [[ "${TEMPLATE_MODE:-false}" == "true" ]]; then
+  touch "${HERMES_HOME}/.template_ready"
+  chown "${HERMES_USER}:${HERMES_USER}" "${HERMES_HOME}/.template_ready" 2>/dev/null || true
+  echo "[hermes-bootstrap] TEMPLATE_MODE complete — sentinel written, exiting before per-customer steps"
+  exit 0
 fi
 
 echo "[hermes-bootstrap] Installing cron jobs"
