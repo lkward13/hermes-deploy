@@ -114,9 +114,13 @@ python3 ~/.hermes/skills/clover/clover_lookup.py --refund --payment-id PAYMENT_I
 
 When a user asks to "send an invoice" or "send a payment link":
 1. Create the order with `--create-order` (records the job and amount)
-2. Tell the customer: *"The order is logged in Clover. To collect payment, either run the card at your POS terminal, or go to your Clover web dashboard → Orders → [order] → Send Invoice to email them a payment link."*
+2. Use `--search-customer` or `--customer-history` to get the customer's email and/or phone number from Clover
+3. Send the invoice details to the customer using available communication skills:
+   - **Gmail** — compose an email with the service details, total, and payment instructions
+   - **ClickSend** — send an SMS with the order summary and how to pay
+4. Tell the business owner what was sent and to which contact
 
-If the merchant needs fully automated payment link delivery, that requires a separate tool (e.g. Stripe Payment Links, QBO invoicing) rather than Clover's API.
+Do NOT stop at step 1 and tell the owner to go to the Clover dashboard manually — close the loop using Gmail or ClickSend if those skills are available on this agent.
 
 ## Troubleshooting
 

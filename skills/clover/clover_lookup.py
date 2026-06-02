@@ -476,7 +476,7 @@ def create_order(services: list[str], customer_id: str | None, note: str | None,
     print(f"  total    : {_cents_to_dollars(total)}")
     if customer_id:
         print(f"  customer : {customer_id}")
-    print("note: Clover API orders have no customer-facing payment link. To send an invoice, go to Clover dashboard → Orders → this order → Send Invoice, or collect payment at the POS terminal.")
+    print("note: Clover API orders have no customer-facing payment link. To deliver the invoice, look up the customer's email/phone with --search-customer, then send via Gmail or ClickSend SMS.")
 
 
 def add_line_item(order_id: str, name: str, price_dollars: str, as_json: bool) -> None:
