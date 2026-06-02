@@ -80,6 +80,26 @@ def _headers() -> dict:
     }
 
 
+def _checkout_request(json_body: dict) -> dict:
+    """Clover Invoicing Checkout Service — different base URL and auth header."""
+    url = "https://api.clover.com/invoicingcheckoutservice/v1/checkouts"
+    resp = requests.post(
+        url,
+        headers={
+            "Authorization": f"Bearer {_access_token()}",
+            "Content-Type": "application/json",
+            "X-Clover-Merchant-Id": _merchant_id(),
+        },
+        json=json_body,
+        timeout=TIMEOUT,
+    )
+    if resp.status_code == 401:
+        print("error: 401 on checkout service — token rejected.", file=sys.stderr)
+        sys.exit(3)
+    resp.raise_for_status()
+    return resp.json()
+
+
 def _request(method: str, path: str, params: dict | None = None, json_body: dict | None = None) -> dict:
     url = f"{_api_base()}/v3/merchants/{_merchant_id()}{path}"
     resp = requests.request(method, url, headers=_headers(), params=params, json=json_body, timeout=TIMEOUT)
@@ -396,6 +416,27 @@ def list_tax_rates(as_json: bool) -> None:
 # WRITE commands
 # ---------------------------------------------------------------------------
 
+def payment_link(services: list[str], customer_email: str | None, as_json: bool) -> None:
+    line_items = []
+    for s in services:
+        if ":" not in s:
+            print(f"error: --service must be 'Name:price', got '{s}'", file=sys.stderr)
+            sys.exit(1)
+        name, price_str = s.rsplit(":", 1)
+        line_items.append({"name": name.strip(), "price": _dollars_to_cents(price_str.strip()), "unitQty": 1000})
+    body: dict = {"shoppingCart": {"lineItems": line_items}}
+    if customer_email:
+        body["customer"] = {"email": customer_email}
+    else:
+        body["customer"] = {}
+    data = _checkout_request(body)
+    if as_json:
+        print(json.dumps(data, indent=2))
+        return
+    print(f"Payment link : {data.get('href')}")
+    print(f"Expires      : {data.get('expirationTime', '')}")
+
+
 def create_customer(first_name: str, last_name: str, email: str | None, phone: str | None, as_json: bool) -> None:
     if not first_name and not last_name:
         print("error: at least one of --first-name or --last-name is required.", file=sys.stderr)
@@ -476,7 +517,17 @@ def create_order(services: list[str], customer_id: str | None, note: str | None,
     print(f"  total    : {_cents_to_dollars(total)}")
     if customer_id:
         print(f"  customer : {customer_id}")
-    print("note: Clover API orders have no customer-facing payment link. To deliver the invoice, look up the customer's email/phone with --search-customer, then send via Gmail or ClickSend SMS.")
+    # Auto-generate a hosted checkout link for the customer
+    try:
+        checkout_items = [{"name": n, "price": c, "unitQty": 1000} for n, c in line_items]
+        checkout = _checkout_request({"customer": {}, "shoppingCart": {"lineItems": checkout_items}})
+        checkout_url = checkout.get("href", "")
+        if checkout_url:
+            print(f"  pay link : {checkout_url}")
+            print(f"  expires  : {checkout.get('expirationTime', '')}")
+            print("Send this link to the customer via Gmail or ClickSend SMS to collect payment.")
+    except Exception:
+        print("note: could not generate payment link — send invoice manually via Clover dashboard.")
 
 
 def add_line_item(order_id: str, name: str, price_dollars: str, as_json: bool) -> None:
@@ -599,6 +650,7 @@ def main() -> int:
     g.add_argument("--list-tax-rates", action="store_true")
 
     # Write
+    g.add_argument("--payment-link", action="store_true", help="Generate a hosted Clover checkout URL (no order record)")
     g.add_argument("--create-customer", action="store_true")
     g.add_argument("--update-customer", metavar="CUSTOMER_ID")
     g.add_argument("--create-order", action="store_true")
@@ -670,6 +722,11 @@ def main() -> int:
             list_discounts(args.json)
         elif args.list_tax_rates:
             list_tax_rates(args.json)
+        elif args.payment_link:
+            if not args.services:
+                print("error: --payment-link requires at least one --service 'Name:price'", file=sys.stderr)
+                return 1
+            payment_link(args.services, args.email or None, args.json)
         elif args.create_customer:
             create_customer(args.first_name, args.last_name, args.email or None, args.phone or None, args.json)
         elif args.update_customer:

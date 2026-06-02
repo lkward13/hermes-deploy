@@ -110,17 +110,17 @@ python3 ~/.hermes/skills/clover/clover_lookup.py --refund --payment-id PAYMENT_I
 
 ## Known limitations
 
-**Orders created via the API do not produce a customer-facing payment link.** Clover's REST API creates internal order records; it has no endpoint for generating a hosted checkout or invoice URL. The only URL returned is the internal API record, which is not shareable with customers.
+**`--create-order` automatically generates a hosted Clover payment link** via the Invoicing Checkout Service (`POST /invoicingcheckoutservice/v1/checkouts`). The link appears in the output as `pay link: https://www.clover.com/pay-checkout/...` and expires after ~15 minutes.
 
 When a user asks to "send an invoice" or "send a payment link":
-1. Create the order with `--create-order` (records the job and amount)
-2. Use `--search-customer` or `--customer-history` to get the customer's email and/or phone number from Clover
-3. Send the invoice details to the customer using available communication skills:
-   - **Gmail** — compose an email with the service details, total, and payment instructions
-   - **ClickSend** — send an SMS with the order summary and how to pay
-4. Tell the business owner what was sent and to which contact
+1. Run `--create-order` — it creates the order record AND prints a payment link in one shot
+2. Use `--search-customer` to get the customer's email or phone
+3. Send the link to the customer via Gmail or ClickSend SMS
+4. Tell the owner what was sent and to which contact
 
-Do NOT stop at step 1 and tell the owner to go to the Clover dashboard manually — close the loop using Gmail or ClickSend if those skills are available on this agent.
+For a quick payment link without creating an order record, use `--payment-link` directly.
+
+If the checkout service returns an error, fall back to sending order details via Gmail/ClickSend without a link.
 
 ## Troubleshooting
 
