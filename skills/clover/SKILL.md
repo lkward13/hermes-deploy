@@ -108,6 +108,16 @@ python3 ~/.hermes/skills/clover/clover_lookup.py --refund --payment-id PAYMENT_I
 python3 ~/.hermes/skills/clover/clover_lookup.py --refund --payment-id PAYMENT_ID --amount 50.00  # partial
 ```
 
+## Known limitations
+
+**Orders created via the API do not produce a customer-facing payment link.** Clover's REST API creates internal order records; it has no endpoint for generating a hosted checkout or invoice URL. The only URL returned is the internal API record, which is not shareable with customers.
+
+When a user asks to "send an invoice" or "send a payment link":
+1. Create the order with `--create-order` (records the job and amount)
+2. Tell the customer: *"The order is logged in Clover. To collect payment, either run the card at your POS terminal, or go to your Clover web dashboard → Orders → [order] → Send Invoice to email them a payment link."*
+
+If the merchant needs fully automated payment link delivery, that requires a separate tool (e.g. Stripe Payment Links, QBO invoicing) rather than Clover's API.
+
 ## Troubleshooting
 
 - **401** — Token expired or invalid. Trigger NoDesk credential sync.
