@@ -79,16 +79,21 @@ fi
 
 echo "[hermes-bootstrap] Creating virtualenv"
 run_as_hermes "python3 -m venv '${HERMES_HOME}/hermes-agent/venv'"
-run_as_hermes "'${HERMES_HOME}/hermes-agent/venv/bin/python' -m pip install --upgrade pip wheel setuptools"
-run_as_hermes "'${HERMES_HOME}/hermes-agent/venv/bin/python' -m pip install slack-bolt slack-sdk"
+# pip 26.x writes its editable path-hook file relative to CWD, not to
+# site-packages. When bootstrap.sh runs as root from /root (cloud-init's
+# default), the hermes user can't write there and pip exits with
+# `Permission denied: '__editable__.<pkg>.finder.__path_hook__'`. cd to
+# HERMES_HOME/hermes-agent first — hermes owns it.
+run_as_hermes "cd '${HERMES_HOME}/hermes-agent' && '${HERMES_HOME}/hermes-agent/venv/bin/python' -m pip install --upgrade pip wheel setuptools"
+run_as_hermes "cd '${HERMES_HOME}/hermes-agent' && '${HERMES_HOME}/hermes-agent/venv/bin/python' -m pip install slack-bolt slack-sdk"
 run_as_hermes "cd '${HERMES_HOME}/hermes-agent' && '${HERMES_HOME}/hermes-agent/venv/bin/pip' install -e ."
-run_as_hermes "'${HERMES_HOME}/hermes-agent/venv/bin/pip' install python-dotenv requests python-telegram-bot"
+run_as_hermes "cd '${HERMES_HOME}/hermes-agent' && '${HERMES_HOME}/hermes-agent/venv/bin/pip' install python-dotenv requests python-telegram-bot"
 
 echo "[hermes-bootstrap] Installing voice extras (TTS + STT)"
 # edge-tts: free Microsoft TTS for voice replies (~5MB).
 # faster-whisper: local STT so clients can leave voice notes (~200MB pkg,
 # ~500MB for the default model downloaded on first use).
-run_as_hermes "'${HERMES_HOME}/hermes-agent/venv/bin/pip' install --no-build-isolation edge-tts faster-whisper sounddevice numpy"
+run_as_hermes "cd '${HERMES_HOME}/hermes-agent' && '${HERMES_HOME}/hermes-agent/venv/bin/pip' install --no-build-isolation edge-tts faster-whisper sounddevice numpy"
 
 echo "[hermes-bootstrap] Installing gh (GitHub CLI)"
 if ! command -v gh >/dev/null 2>&1; then
@@ -204,7 +209,20 @@ WATCHDOG_JOB="* * * * * if ! touch /root/.hermes/.rw_check 2>/dev/null; then mou
 PULL_JOB="0 3 * * * mount -o remount,rw / 2>/dev/null; cd ${HERMES_HOME} && git fetch origin main && git reset --hard origin/main && sudo -u ${HERMES_USER} python3 ./scripts/render_templates.py >> ${HERMES_HOME}/auto-pull.log 2>&1; chown -R ${HERMES_USER}:${HERMES_USER} ${HERMES_HOME}"
 CODEX_AUTH_JOB="*/55 * * * * HERMES_HOME=${HERMES_HOME} sudo -u ${HERMES_USER} python3 ${HERMES_HOME}/scripts/sync_codex_cli_auth.py >> ${HERMES_HOME}/codex-cli-auth.log 2>&1"
 GITHUB_JOB="*/50 * * * * HERMES_HOME=${HERMES_HOME} ${HERMES_HOME}/scripts/refresh_github_token.sh >> ${HERMES_HOME}/github-token-refresh.log 2>&1"
-(crontab -l 2>/dev/null | grep -v "rw_check\|git fetch origin main\|refresh_github_token\|sync_codex_cli_auth"; echo "$WATCHDOG_JOB"; echo "$PULL_JOB"; echo "$GITHUB_JOB"; echo "$CODEX_AUTH_JOB") | crontab -
+# On a freshly-provisioned VPS there is no existing crontab, so
+# `crontab -l` exits 1. With `set -euo pipefail`, that propagated
+# through this pipeline and silently killed the script — the
+# "Notifying NoDesk" curl below never ran, and agents stayed stuck
+# in "bootstrapping" forever. Use `|| true` on the crontab -l/grep
+# leg so the merge always produces output, even when both legs find
+# nothing.
+{
+  { crontab -l 2>/dev/null || true; } | grep -v "rw_check\|git fetch origin main\|refresh_github_token\|sync_codex_cli_auth" || true
+  echo "$WATCHDOG_JOB"
+  echo "$PULL_JOB"
+  echo "$GITHUB_JOB"
+  echo "$CODEX_AUTH_JOB"
+} | crontab -
 
 # Notify NoDesk that bootstrap finished, so it can flip the agent row's
 # status from "bootstrapping" to "active". Without this callback, the
