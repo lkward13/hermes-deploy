@@ -223,7 +223,7 @@ chmod +x "${HERMES_HOME}/scripts/refresh_github_token.sh" 2>/dev/null || true
 # Run codex-cli auth sync once now so codex is logged in when bootstrap completes.
 # Safe if Codex isn't connected yet — the script no-ops and returns 0.
 run_as_hermes "HERMES_HOME='${HERMES_HOME}' python3 '${HERMES_HOME}/scripts/sync_codex_cli_auth.py'" || true
-WATCHDOG_JOB="* * * * * if ! touch /root/.hermes/.rw_check 2>/dev/null; then mount -o remount,rw / 2>/dev/null; kill \$(cat ${HERMES_HOME}/bootstrap_gateway.pid 2>/dev/null) 2>/dev/null; sleep 1; cd ${HERMES_HOME} && nohup ./start-hermes-gateway.sh > ${HERMES_HOME}/gateway.log 2>&1 & echo \$! > ${HERMES_HOME}/bootstrap_gateway.pid; fi"
+WATCHDOG_JOB="* * * * * if ! touch /root/.rw_check 2>/dev/null; then mount -o remount,rw / 2>/dev/null; kill \$(cat ${HERMES_HOME}/bootstrap_gateway.pid 2>/dev/null) 2>/dev/null; sleep 1; cd ${HERMES_HOME} && nohup ./start-hermes-gateway.sh > ${HERMES_HOME}/gateway.log 2>&1 & echo \$! > ${HERMES_HOME}/bootstrap_gateway.pid; fi"
 PULL_JOB="0 3 * * * mount -o remount,rw / 2>/dev/null; cd ${HERMES_HOME} && git fetch origin main && git reset --hard origin/main && sudo -u ${HERMES_USER} python3 ./scripts/render_templates.py >> ${HERMES_HOME}/auto-pull.log 2>&1; chown -R ${HERMES_USER}:${HERMES_USER} ${HERMES_HOME}"
 CODEX_AUTH_JOB="*/55 * * * * HERMES_HOME=${HERMES_HOME} sudo -u ${HERMES_USER} python3 ${HERMES_HOME}/scripts/sync_codex_cli_auth.py >> ${HERMES_HOME}/codex-cli-auth.log 2>&1"
 GITHUB_JOB="*/50 * * * * HERMES_HOME=${HERMES_HOME} ${HERMES_HOME}/scripts/refresh_github_token.sh >> ${HERMES_HOME}/github-token-refresh.log 2>&1"
