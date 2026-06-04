@@ -96,6 +96,26 @@ def main() -> int:
     out_path.write_text(json.dumps(codex_auth, indent=2))
     os.chmod(out_path, 0o600)
     print(f"sync_codex_cli_auth: wrote {out_path} (account_id={account_id})")
+
+    # Persist the rotated refresh_token (and access_token + last_refresh)
+    # back to ~/.hermes/auth.json so the NEXT run of this script — typically
+    # the */55min cron — reads the rotated token, not the now-consumed one.
+    # Without this write the cron silently breaks after the first refresh
+    # and the gateway starts returning "Codex refresh token was already
+    # consumed by another client" on every customer message.
+    new_refresh = tokens.get("refresh_token") or refresh_token
+    try:
+        hermes_auth["providers"]["openai-codex"]["tokens"]["refresh_token"] = new_refresh
+        hermes_auth["providers"]["openai-codex"]["tokens"]["access_token"] = tokens["access_token"]
+        hermes_auth["providers"]["openai-codex"]["last_refresh"] = codex_auth["last_refresh"]
+        hermes_auth_path.write_text(json.dumps(hermes_auth, indent=2))
+        os.chmod(hermes_auth_path, 0o600)
+        print(f"sync_codex_cli_auth: updated {hermes_auth_path} with rotated refresh_token")
+    except Exception as exc:
+        # Non-fatal: the codex CLI got its auth.json above, so the agent
+        # still works *this* turn. Next cron run will fail the same way
+        # though, so surface the error.
+        print(f"sync_codex_cli_auth: WARNING — could not update {hermes_auth_path}: {exc}", file=sys.stderr)
     return 0
 
 
