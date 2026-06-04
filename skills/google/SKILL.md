@@ -63,10 +63,44 @@ $VENV /root/.hermes/skills/google/gcalendar.py delete --id <event_id>
 
 Timezone defaults to America/Chicago.
 
+## Sheets
+
+```bash
+# List sheets the agent can access (created by the agent OR shared with it)
+$VENV /root/.hermes/skills/google/gsheets.py list
+
+# Create a new spreadsheet (returns id + url)
+$VENV /root/.hermes/skills/google/gsheets.py create --title "Q3 Leads Pipeline"
+
+# Read a range
+$VENV /root/.hermes/skills/google/gsheets.py read --id <spreadsheet_id> --range "Sheet1!A1:D10"
+
+# Overwrite a range
+$VENV /root/.hermes/skills/google/gsheets.py write --id <spreadsheet_id> --range "Sheet1!A1" \
+  --values '[["Name","Phone","Status"],["Jane Doe","5551234567","New"]]'
+
+# Append rows at the bottom of a range
+$VENV /root/.hermes/skills/google/gsheets.py append --id <spreadsheet_id> --range "Sheet1!A1" \
+  --values '[["John Smith","5559876543","Contacted"]]'
+
+# Share a sheet with a customer (or co-worker)
+$VENV /root/.hermes/skills/google/gsheets.py share --id <spreadsheet_id> --email owner@example.com --role writer
+```
+
+Common workflow — "log this lead to my CRM sheet":
+```bash
+# 1. find the sheet
+$VENV /root/.hermes/skills/google/gsheets.py list
+# 2. append the row
+$VENV /root/.hermes/skills/google/gsheets.py append --id <id_from_list> --range "Sheet1!A1" \
+  --values '[["Jane Doe","555-123-4567","Roof estimate","2026-06-04"]]'
+```
+
 ## Notes
 
 - Gmail scope: send + readonly. Cannot delete emails.
 - Calendar scope: full read/write on primary calendar.
+- Sheets scope: full read/write. **But `list` only shows sheets the agent CREATED itself** (drive.file scope on the Drive side) — the customer's pre-existing personal Sheets are not visible until shared with the agent's Google account, OR the agent creates new ones.
 - The client must connect Google in their NoDesk portal for tokens to be present.
 - If tokens are missing, scripts exit with a clear error message.
 - calendar.py was renamed gcalendar.py to avoid shadowing Python's stdlib calendar module.
