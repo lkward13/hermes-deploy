@@ -1,10 +1,9 @@
-"""Tier 1 (optional 7th) — lead_auto_text_cron.check_business_hours() boundary.
+"""Tier 1 — lead_auto_text_cron.check_business_hours() boundary, DST-aware.
 
-PINNED to the current hardcoded UTC-5 behavior. This is a regression anchor for
-a KNOWN bug: UTC-5 is wrong under Central Standard Time (Nov-Mar, should be
-UTC-6). See the hermes-deploy DST issue. When that is fixed, the fixture and
-these expectations change in the same PR — which is the point: the fix becomes
-test-driven instead of silent.
+Locks the issue #8 fix: the gate uses America/Chicago, so the UTC->Central
+offset is -6 under CST (Nov-Mar) and -5 under CDT (Mar-Nov). The winter cases in
+the fixture fail against the old hardcoded UTC-5 code and pass against the
+zoneinfo fix; the summer cases keep CDT behavior covered.
 """
 from datetime import datetime, timezone
 
@@ -13,7 +12,7 @@ from freezegun import freeze_time
 from loader import load_fixture
 
 
-def test_business_hours_boundaries_pinned_to_utc_minus_5():
+def test_business_hours_boundaries_are_dst_correct():
     import lead_auto_text_cron as cron
 
     fx = load_fixture("business_hours_boundary")
