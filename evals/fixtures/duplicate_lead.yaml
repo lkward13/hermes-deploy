@@ -1,0 +1,36 @@
+scenario: 3
+description: >
+  A poll that returns a lead whose fb_lead_id is already known (present in
+  leads.json) must NOT be re-surfaced as a new lead, so it is not re-texted.
+seed_leads:
+  leads:
+    "+15551234567":
+      name: "Known Lead"
+      phone: "+15551234567"
+      email: ""
+      source: "facebook"
+      fb_lead_id: "KNOWN-1"
+      status: "contacted"
+      conversation: []
+  updated_at: null
+graph_response:
+  data:
+    - id: "KNOWN-1"
+      created_time: "2026-06-07T10:00:00+0000"
+      field_data:
+        - name: "full_name"
+          values: ["Known Lead"]
+        - name: "phone_number"
+          values: ["+15551234567"]
+    - id: "NEW-2"
+      created_time: "2026-06-07T11:00:00+0000"
+      field_data:
+        - name: "first_name"
+          values: ["New"]
+        - name: "last_name"
+          values: ["Lead"]
+        - name: "phone_number"
+          values: ["+15559998888"]
+expected:
+  new_lead_ids: ["NEW-2"]
+  total_fetched: 2

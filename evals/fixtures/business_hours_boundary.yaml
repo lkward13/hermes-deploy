@@ -1,0 +1,17 @@
+scenario: business-hours-boundary
+description: >
+  check_business_hours() boundary cases, PINNED to the CURRENT hardcoded UTC-5
+  behavior in lead_auto_text_cron.py. This is deliberately a regression anchor,
+  not an endorsement: UTC-5 is wrong under Central Standard Time (Nov-Mar), when
+  the offset should be UTC-6. See hermes-deploy issue (DST not handled). When
+  that bug is fixed, these expectations change and this fixture documents the
+  before/after.
+cases:
+  - utc: "2026-06-07T13:00:00"   # 08:00 Central -> open
+    expected: true
+  - utc: "2026-06-07T12:59:00"   # 07:59 Central -> closed
+    expected: false
+  - utc: "2026-06-07T00:59:00"   # 19:59 Central -> open
+    expected: true
+  - utc: "2026-06-07T01:00:00"   # 20:00 Central -> closed
+    expected: false

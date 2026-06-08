@@ -1,0 +1,16 @@
+scenario: 12
+description: >
+  The polling-pitfalls failure mode: an inbound reply that is ~5 minutes old is
+  missed by a narrow `--since 2` lookback window but caught by a wider
+  `--since 10` window. Anchors the "use a wider lookback" guidance.
+now_iso: "2026-06-07T12:00:00+00:00"
+message_age_seconds: 300
+inbound_message:
+  from: "+15559998888"
+  to: "+15550001111"
+  body: "Yes that works"
+narrow_since: 2
+wide_since: 10
+expected:
+  narrow_count: 0
+  wide_count: 1

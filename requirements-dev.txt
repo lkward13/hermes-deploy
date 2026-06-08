@@ -1,0 +1,13 @@
+# Dev/eval-only dependencies for the lead-auto-text eval harness (evals/).
+# NOT installed on customer VPSes — bootstrap.sh / first_boot.sh never pip-install
+# this file, and no cron executes evals/. See evals/README.md.
+pytest>=8.0
+responses>=0.25
+freezegun>=1.5
+pyyaml>=6.0
+
+# Runtime dependency of the skill scripts themselves (poll_leads.py, send_sms.py,
+# check_sms.py import `requests`). On customer boxes this is provided by the system
+# Python; listed here so `pip install -r requirements-dev.txt` is enough to run the
+# evals in a clean local venv.
+requests>=2.31
