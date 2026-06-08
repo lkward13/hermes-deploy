@@ -1,0 +1,16 @@
+scenario: 4
+description: >
+  A Facebook lead that arrives with no phone number is dropped by poll_leads
+  (parse yields an empty phone), so no SMS is ever attempted against it.
+graph_response:
+  data:
+    - id: "NOPHONE-1"
+      created_time: "2026-06-07T11:00:00+0000"
+      field_data:
+        - name: "first_name"
+          values: ["Phoneless"]
+        - name: "email"
+          values: ["p@example.com"]
+expected:
+  new_lead_ids: []
+  total_fetched: 1

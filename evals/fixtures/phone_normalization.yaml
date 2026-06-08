@@ -1,0 +1,13 @@
+scenario: 13
+description: >
+  Assorted phone formats all normalize to the same E.164 key so the same lead is
+  never double-tracked under two keys.
+expected_normalized: "+15551234567"
+cases:
+  - "5551234567"
+  - "15551234567"
+  - "+15551234567"
+  - "555-123-4567"
+  - "1-555-123-4567"
+  - "(555) 123-4567"
+  - "+1 (555) 123-4567"

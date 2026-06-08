@@ -1,0 +1,13 @@
+scenario: 5
+description: >
+  When ClickSend accepts the request (HTTP 200) but reports a non-SUCCESS
+  per-message status, send_sms must surface failure (return code 1) rather than
+  falsely reporting the text as sent.
+clicksend_response:
+  data:
+    messages:
+      - status: "INVALID_RECIPIENT"
+        message_id: "n/a"
+        to: "+15551234567"
+expected:
+  return_code: 1
