@@ -11,3 +11,9 @@ pyyaml>=6.0
 # Python; listed here so `pip install -r requirements-dev.txt` is enough to run the
 # evals in a clean local venv.
 requests>=2.31
+
+# tzdata provides the IANA tz database for zoneinfo on platforms that lack a
+# system copy (Windows dev machines). lead_auto_text_cron.check_business_hours()
+# uses ZoneInfo("America/Chicago"); Ubuntu (CI runners + customer VPSes) ships
+# the tz db natively, so this only matters for local non-Linux dev.
+tzdata>=2024.1

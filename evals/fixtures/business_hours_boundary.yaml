@@ -1,17 +1,23 @@
 scenario: business-hours-boundary
 description: >
-  check_business_hours() boundary cases, PINNED to the CURRENT hardcoded UTC-5
-  behavior in lead_auto_text_cron.py. This is deliberately a regression anchor,
-  not an endorsement: UTC-5 is wrong under Central Standard Time (Nov-Mar), when
-  the offset should be UTC-6. See hermes-deploy issue (DST not handled). When
-  that bug is fixed, these expectations change and this fixture documents the
-  before/after.
+  check_business_hours() boundary cases, now asserting DST-CORRECT behavior
+  (issue #8 fixed). The function uses America/Chicago, so the UTC->Central offset
+  is -6 under CST (Nov-Mar) and -5 under CDT (Mar-Nov). The winter cases below
+  fail against the old hardcoded UTC-5 code and pass against the zoneinfo fix;
+  the summer case keeps CDT behavior covered. Open/closed window is 08:00-20:00
+  Central inclusive of 08:00, exclusive of 20:00.
 cases:
-  - utc: "2026-06-07T13:00:00"   # 08:00 Central -> open
-    expected: true
-  - utc: "2026-06-07T12:59:00"   # 07:59 Central -> closed
+  # --- Winter / CST (UTC-6) — these are the test-driven flip for issue #8 ---
+  - utc: "2026-01-15T13:00:00"   # 07:00 Central (CST) -> closed
     expected: false
-  - utc: "2026-06-07T00:59:00"   # 19:59 Central -> open
+  - utc: "2026-01-15T14:00:00"   # 08:00 Central (CST) -> open
     expected: true
-  - utc: "2026-06-07T01:00:00"   # 20:00 Central -> closed
+  - utc: "2026-01-16T02:00:00"   # 20:00 Central (CST) prev day -> closed
+    expected: false
+  # --- Summer / CDT (UTC-5) — unchanged behavior, kept for coverage ---
+  - utc: "2026-06-07T13:00:00"   # 08:00 Central (CDT) -> open
+    expected: true
+  - utc: "2026-06-07T12:59:00"   # 07:59 Central (CDT) -> closed
+    expected: false
+  - utc: "2026-06-07T01:00:00"   # 20:00 Central (CDT) prev day -> closed
     expected: false

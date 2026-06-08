@@ -11,7 +11,8 @@ import json
 import os
 import subprocess
 import sys
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 SKILL_DIR = os.path.join(os.path.expanduser("~"), ".hermes", "skills", "lead-auto-text")
 PYTHON = sys.executable
@@ -51,9 +52,9 @@ def check_new_leads() -> list:
 
 
 def check_business_hours() -> bool:
-    utc_now = datetime.now(timezone.utc)
-    central_offset = timedelta(hours=-5)
-    central_now = utc_now + central_offset
+    # America/Chicago handles CST/CDT automatically (issue #8: a hardcoded
+    # UTC-5 offset was an hour off for ~half the year, under CST).
+    central_now = datetime.now(ZoneInfo("America/Chicago"))
     return 8 <= central_now.hour < 20
 
 
