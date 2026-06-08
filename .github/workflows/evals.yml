@@ -1,0 +1,27 @@
+name: evals
+
+# Read-only CI: runs the lead-auto-text eval suite on every PR and on pushes to
+# main. No deploys, no secrets, no write/PR-creating actions — it only runs tests.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dev/eval dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run eval suite
+        run: pytest evals/ -q
