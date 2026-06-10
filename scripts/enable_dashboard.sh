@@ -12,7 +12,7 @@
 #                                           already resolve to this VPS's IP)
 #   HERMES_DASHBOARD_BASIC_AUTH_USERNAME
 #   HERMES_DASHBOARD_BASIC_AUTH_PASSWORD
-#   HERMES_DASHBOARD_SECRET                 session-signing key
+#   HERMES_DASHBOARD_BASIC_AUTH_SECRET      session-signing key
 set -euo pipefail
 
 HERMES_HOME="${HERMES_HOME:-/home/hermes/.hermes}"
@@ -24,7 +24,7 @@ set -a
 source "${HERMES_HOME}/.env"
 set +a
 
-for var in AGENT_DOMAIN HERMES_DASHBOARD_BASIC_AUTH_USERNAME HERMES_DASHBOARD_BASIC_AUTH_PASSWORD HERMES_DASHBOARD_SECRET; do
+for var in AGENT_DOMAIN HERMES_DASHBOARD_BASIC_AUTH_USERNAME HERMES_DASHBOARD_BASIC_AUTH_PASSWORD HERMES_DASHBOARD_BASIC_AUTH_SECRET; do
   if [[ -z "${!var:-}" ]]; then
     echo "[enable-dashboard] ERROR: ${var} is empty in ${HERMES_HOME}/.env — refusing to enable" >&2
     exit 1
@@ -44,7 +44,11 @@ User=${HERMES_USER}
 WorkingDirectory=${HERMES_HOME}
 Environment=HERMES_HOME=${HERMES_HOME}
 EnvironmentFile=${HERMES_HOME}/.env
-ExecStart=${HERMES_HOME}/hermes-agent/venv/bin/python -m hermes_cli.main dashboard --host 127.0.0.1 --port ${DASHBOARD_PORT}
+# 0.0.0.0 bind is what engages the dashboard's auth gate — a loopback bind
+# runs with NO auth (web_server.py: "host == loopback -> False (no auth)").
+# Direct :9119 access is plain HTTP; block it at the Hetzner cloud firewall
+# so the only path in is Caddy's TLS on 443.
+ExecStart=${HERMES_HOME}/hermes-agent/venv/bin/python -m hermes_cli.main dashboard --host 0.0.0.0 --port ${DASHBOARD_PORT}
 Restart=always
 RestartSec=5
 
@@ -57,10 +61,9 @@ systemctl enable --now hermes-dashboard.service
 sleep 5
 systemctl is-active hermes-dashboard.service
 
-# The dashboard's auth gate auto-engages on non-loopback binds; we bind
-# loopback behind Caddy, so verify the basic-auth env vars actually engaged
-# it before exposing the port through Caddy. An unauthenticated dashboard
-# behind public TLS would be full agent takeover.
+# The auth gate engages because of the non-loopback bind above; verify it
+# actually did before exposing the port through Caddy. An unauthenticated
+# dashboard behind public TLS would be full agent takeover.
 echo "[enable-dashboard] Verifying auth gate is engaged"
 status_json="$(curl -fsS --max-time 10 "http://127.0.0.1:${DASHBOARD_PORT}/api/status")"
 echo "${status_json}"
