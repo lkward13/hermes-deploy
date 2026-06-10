@@ -4,7 +4,7 @@ set -euo pipefail
 HERMES_USER="${HERMES_USER:-hermes}"
 HERMES_HOME="${HERMES_HOME:-/home/${HERMES_USER}/.hermes}"
 HERMES_AGENT_REPO="${HERMES_AGENT_REPO:-https://github.com/NousResearch/hermes-agent.git}"
-HERMES_AGENT_REF="${HERMES_AGENT_REF:-b816fd4e2}"
+HERMES_AGENT_REF="${HERMES_AGENT_REF:-v2026.6.5}"
 HERMES_DEPLOY_REPO="${HERMES_DEPLOY_REPO:-}"
 HERMES_DEPLOY_REF="${HERMES_DEPLOY_REF:-main}"
 
@@ -85,15 +85,14 @@ run_as_hermes "python3 -m venv '${HERMES_HOME}/hermes-agent/venv'"
 # `Permission denied: '__editable__.<pkg>.finder.__path_hook__'`. cd to
 # HERMES_HOME/hermes-agent first — hermes owns it.
 run_as_hermes "cd '${HERMES_HOME}/hermes-agent' && '${HERMES_HOME}/hermes-agent/venv/bin/python' -m pip install --upgrade pip wheel setuptools"
-run_as_hermes "cd '${HERMES_HOME}/hermes-agent' && '${HERMES_HOME}/hermes-agent/venv/bin/python' -m pip install slack-bolt slack-sdk"
-run_as_hermes "cd '${HERMES_HOME}/hermes-agent' && '${HERMES_HOME}/hermes-agent/venv/bin/pip' install -e ."
-run_as_hermes "cd '${HERMES_HOME}/hermes-agent' && '${HERMES_HOME}/hermes-agent/venv/bin/pip' install python-dotenv requests python-telegram-bot"
-
-echo "[hermes-bootstrap] Installing voice extras (TTS + STT)"
-# edge-tts: free Microsoft TTS for voice replies (~5MB).
-# faster-whisper: local STT so clients can leave voice notes (~200MB pkg,
-# ~500MB for the default model downloaded on first use).
-run_as_hermes "cd '${HERMES_HOME}/hermes-agent' && '${HERMES_HOME}/hermes-agent/venv/bin/pip' install --no-build-isolation edge-tts faster-whisper sounddevice numpy"
+# Since v0.14 hermes-agent ships messaging/voice deps as extras with pinned
+# versions (python-telegram-bot, slack-bolt, edge-tts, faster-whisper, ...).
+# Installing them ad-hoc version-skews against upstream's pins — use the
+# extras so pip resolves the exact versions the agent was tested with.
+run_as_hermes "cd '${HERMES_HOME}/hermes-agent' && '${HERMES_HOME}/hermes-agent/venv/bin/pip' install -e '.[messaging,voice,edge-tts]'"
+# python-dotenv + requests are used by NoDesk's own skill scripts and
+# render_templates.py, not by hermes-agent itself.
+run_as_hermes "cd '${HERMES_HOME}/hermes-agent' && '${HERMES_HOME}/hermes-agent/venv/bin/pip' install python-dotenv requests"
 
 echo "[hermes-bootstrap] Installing gh (GitHub CLI)"
 if ! command -v gh >/dev/null 2>&1; then

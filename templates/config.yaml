@@ -204,5 +204,8 @@ platforms:
     enabled: {{SLACK_ENABLED}}
     extra:
       reply_in_thread: true
-_config_version: 11
+# Matches hermes-agent v2026.6.5 (v0.16.0). When this lags the agent's expected
+# version the gateway auto-migrates headlessly on boot — harmless but the
+# nightly re-render would re-trigger the migration daily.
+_config_version: 27
 group_sessions_per_user: true

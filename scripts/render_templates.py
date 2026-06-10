@@ -86,6 +86,12 @@ DEFAULTS = {
     "GH_TOKEN": "",
     "OPENAI_API_KEY": "",
     "IMAGE_GEN_PROVIDER": "openai-codex",
+    # Remote dashboard (mobile app gateway) — empty means the dashboard
+    # service stays disabled; enable_dashboard.sh requires all of these.
+    "AGENT_DOMAIN": "",
+    "HERMES_DASHBOARD_BASIC_AUTH_USERNAME": "",
+    "HERMES_DASHBOARD_BASIC_AUTH_PASSWORD": "",
+    "HERMES_DASHBOARD_SECRET": "",
 }
 
 
