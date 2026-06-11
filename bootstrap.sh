@@ -3,8 +3,13 @@ set -euo pipefail
 
 HERMES_USER="${HERMES_USER:-hermes}"
 HERMES_HOME="${HERMES_HOME:-/home/${HERMES_USER}/.hermes}"
-HERMES_AGENT_REPO="${HERMES_AGENT_REPO:-https://github.com/NousResearch/hermes-agent.git}"
-HERMES_AGENT_REF="${HERMES_AGENT_REF:-v2026.6.5}"
+# Default to NoDesk's downstream fork of hermes-agent so NoDesk-owned routes
+# (e.g. the /api/artifacts media bridge) ship with the agent. The fork tracks
+# NousResearch/hermes-agent via its `upstream` remote; tags are cut as
+# nodesk-<upstream-version>-<n>. NoDesk passes HERMES_AGENT_REPO/REF explicitly,
+# so these are just the fallback.
+HERMES_AGENT_REPO="${HERMES_AGENT_REPO:-https://github.com/lkward13/nodesk-hermes-agent.git}"
+HERMES_AGENT_REF="${HERMES_AGENT_REF:-nodesk-v2026.6.5-1}"
 HERMES_DEPLOY_REPO="${HERMES_DEPLOY_REPO:-}"
 HERMES_DEPLOY_REF="${HERMES_DEPLOY_REF:-main}"
 
@@ -72,7 +77,10 @@ fi
 
 echo "[hermes-bootstrap] Cloning Hermes agent"
 if [[ -d "${HERMES_HOME}/hermes-agent/.git" ]]; then
-  run_as_hermes "cd '${HERMES_HOME}/hermes-agent' && git fetch origin && git checkout '${HERMES_AGENT_REF}'"
+  # Repoint origin at the configured repo before fetching so a re-bootstrap of
+  # a box that was cloned from a different remote (e.g. the old upstream) moves
+  # cleanly to the fork and can resolve NoDesk tags.
+  run_as_hermes "cd '${HERMES_HOME}/hermes-agent' && git remote set-url origin '${HERMES_AGENT_REPO}' && git fetch origin --tags && git checkout '${HERMES_AGENT_REF}'"
 else
   run_as_hermes "git clone '${HERMES_AGENT_REPO}' '${HERMES_HOME}/hermes-agent' && cd '${HERMES_HOME}/hermes-agent' && git checkout '${HERMES_AGENT_REF}'"
 fi
