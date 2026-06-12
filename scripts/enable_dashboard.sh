@@ -79,12 +79,19 @@ if ! command -v caddy >/dev/null 2>&1; then
   DEBIAN_FRONTEND=noninteractive apt-get install -y -qq caddy
 fi
 
-echo "[enable-dashboard] Writing Caddyfile for ${AGENT_DOMAIN}"
-cat >/etc/caddy/Caddyfile <<EOF
+echo "[enable-dashboard] Ensuring Caddy site for ${AGENT_DOMAIN}"
+# Append (don't clobber): an agent may already front other ports via Caddy
+# (e.g. a :8644 webhook site). Add our TLS site only if it isn't there yet.
+mkdir -p /etc/caddy
+touch /etc/caddy/Caddyfile
+if ! grep -qF "${AGENT_DOMAIN}" /etc/caddy/Caddyfile; then
+  cat >>/etc/caddy/Caddyfile <<EOF
+
 ${AGENT_DOMAIN} {
     reverse_proxy 127.0.0.1:${DASHBOARD_PORT}
 }
 EOF
+fi
 
 systemctl enable --now caddy
 systemctl reload caddy || systemctl restart caddy
