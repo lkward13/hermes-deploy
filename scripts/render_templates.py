@@ -59,6 +59,12 @@ DEFAULTS = {
     "CLICKSEND_API_KEY": "",
     "CLICKSEND_FROM_NUMBER": "",
     "CLICKSEND_USERNAME": "",
+    # Inbound-SMS webhook route names. NoDesk overrides these per tenant: the
+    # secret-bearing route (auth = unguessable name) and the bare/legacy route.
+    # Default both to the bare name so a render with no NoDesk env (e.g. a box
+    # not yet migrated) reproduces the historical single clicksend-sms route.
+    "HERMES_WEBHOOK_ROUTE": "clicksend-sms",
+    "HERMES_WEBHOOK_ROUTE_LEGACY": "clicksend-sms",
     "FACEBOOK_ACCESS_TOKEN": "",
     "FB_FORM_ID": "",
     "FB_PAGE_ACCESS_TOKEN": "",
