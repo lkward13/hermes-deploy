@@ -107,11 +107,25 @@ def write_secret_json(env_key: str, output_path: Path) -> None:
     output_path.chmod(0o600)
 
 
-def main() -> int:
+def main(templates_only: bool = False) -> int:
+    # Static code templates (config.yaml, webhook_subscriptions.json, SOUL.md,
+    # …) are safe to re-render anytime: they're pure functions of env vars.
     for template_name, output_path in OUTPUTS.items():
         template_path = TEMPLATES / template_name
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(render(template_path.read_text()))
+
+    # .env and the SECRET_OUTPUTS JSONs hold MERGED / runtime-mutable state:
+    # .env is maintained by NoDesk's credential_sync (it carries keys that are
+    # not in .env.template), and files like qbo_tokens.json are refreshed by
+    # the agent at runtime. Rewriting them from the template drops those keys
+    # and blanks values — the wipe credential_sync deliberately avoids. The
+    # nightly auto-update passes --templates-only so it refreshes code
+    # templates against the existing .env without clobbering credentials.
+    # Provision (first boot) calls main() with no flag to build .env from
+    # scratch, which is correct because there is no merged .env yet.
+    if templates_only:
+        return 0
 
     env_template = ROOT / ".env.template"
     env_output = ROOT / ".env"
@@ -125,4 +139,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    import sys
+
+    raise SystemExit(main(templates_only="--templates-only" in sys.argv))

@@ -224,16 +224,20 @@ chmod +x "${HERMES_HOME}/scripts/refresh_github_token.sh" 2>/dev/null || true
 # Safe if Codex isn't connected yet — the script no-ops and returns 0.
 run_as_hermes "HERMES_HOME='${HERMES_HOME}' python3 '${HERMES_HOME}/scripts/sync_codex_cli_auth.py'" || true
 WATCHDOG_JOB="* * * * * if ! touch /root/.rw_check 2>/dev/null; then mount -o remount,rw / 2>/dev/null; kill \$(cat ${HERMES_HOME}/bootstrap_gateway.pid 2>/dev/null) 2>/dev/null; sleep 1; cd ${HERMES_HOME} && nohup ./start-hermes-gateway.sh > ${HERMES_HOME}/gateway.log 2>&1 & echo \$! > ${HERMES_HOME}/bootstrap_gateway.pid; fi"
-# Nightly auto-update. Tracks the DELIBERATE release ref HERMES_DEPLOY_PIN
-# (a branch/tag NoDesk advances only after vetting) instead of bare
-# origin/main, so an un-vetted push to main no longer reaches the fleet at
-# 03:00. The pin is resolved remotely each night (git fetch + reset to
-# FETCH_HEAD), so advancing the ref's target rolls the fleet forward without
-# reprovisioning. If the pin is unset we fail LOUD and SAFE: log and skip the
-# reset rather than silently pulling main.
+# Nightly auto-update, run AS THE hermes USER. The .hermes git checkout is
+# owned by hermes; running git as root (cron's default user) trips git's
+# "detected dubious ownership" guard, which silently no-ops the whole job --
+# the reason fleet auto-update has been dead since provision. We also source
+# .env before render: render_templates.py rewrites .env from .env.template,
+# so an env-less render would blank every credential. Tracks the DELIBERATE
+# release ref HERMES_DEPLOY_PIN (a branch/tag NoDesk advances only after
+# vetting) instead of bare origin/main, resolved remotely each night (fetch +
+# reset to FETCH_HEAD). Fail-safe: pin unset => log and skip, never pull main.
+# Steps are &&-chained so a mid-run failure leaves prior rendered files intact
+# (render writes .env last, from the sourced env).
 DEPLOY_PIN="${HERMES_DEPLOY_PIN:-}"
 if [[ -n "${DEPLOY_PIN}" ]]; then
-  PULL_JOB="0 3 * * * mount -o remount,rw / 2>/dev/null; cd ${HERMES_HOME} && git fetch origin '${DEPLOY_PIN}' && git reset --hard FETCH_HEAD && sudo -u ${HERMES_USER} python3 ./scripts/render_templates.py >> ${HERMES_HOME}/auto-pull.log 2>&1; chown -R ${HERMES_USER}:${HERMES_USER} ${HERMES_HOME}"
+  PULL_JOB="0 3 * * * mount -o remount,rw / 2>/dev/null; sudo -u ${HERMES_USER} bash -c 'cd ${HERMES_HOME} && git fetch origin ${DEPLOY_PIN} && git reset --hard FETCH_HEAD && set -a && . ./.env && set +a && python3 ./scripts/render_templates.py --templates-only' >> ${HERMES_HOME}/auto-pull.log 2>&1; chown -R ${HERMES_USER}:${HERMES_USER} ${HERMES_HOME}"
 else
   PULL_JOB="0 3 * * * echo \"[hermes-pull] \$(date -u): HERMES_DEPLOY_PIN unset; nightly auto-update DISABLED (refusing to reset to origin/main)\" >> ${HERMES_HOME}/auto-pull.log 2>&1"
   echo "[hermes-bootstrap] WARNING: HERMES_DEPLOY_PIN unset; nightly auto-update DISABLED. Set HERMES_DEPLOY_PIN to a deliberate release ref to re-enable."
