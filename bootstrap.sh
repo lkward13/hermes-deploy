@@ -224,7 +224,24 @@ chmod +x "${HERMES_HOME}/scripts/refresh_github_token.sh" 2>/dev/null || true
 # Safe if Codex isn't connected yet — the script no-ops and returns 0.
 run_as_hermes "HERMES_HOME='${HERMES_HOME}' python3 '${HERMES_HOME}/scripts/sync_codex_cli_auth.py'" || true
 WATCHDOG_JOB="* * * * * if ! touch /root/.rw_check 2>/dev/null; then mount -o remount,rw / 2>/dev/null; kill \$(cat ${HERMES_HOME}/bootstrap_gateway.pid 2>/dev/null) 2>/dev/null; sleep 1; cd ${HERMES_HOME} && nohup ./start-hermes-gateway.sh > ${HERMES_HOME}/gateway.log 2>&1 & echo \$! > ${HERMES_HOME}/bootstrap_gateway.pid; fi"
-PULL_JOB="0 3 * * * mount -o remount,rw / 2>/dev/null; cd ${HERMES_HOME} && git fetch origin main && git reset --hard origin/main && sudo -u ${HERMES_USER} python3 ./scripts/render_templates.py >> ${HERMES_HOME}/auto-pull.log 2>&1; chown -R ${HERMES_USER}:${HERMES_USER} ${HERMES_HOME}"
+# Nightly auto-update, run AS THE hermes USER. The .hermes git checkout is
+# owned by hermes; running git as root (cron's default user) trips git's
+# "detected dubious ownership" guard, which silently no-ops the whole job --
+# the reason fleet auto-update has been dead since provision. We also source
+# .env before render: render_templates.py rewrites .env from .env.template,
+# so an env-less render would blank every credential. Tracks the DELIBERATE
+# release ref HERMES_DEPLOY_PIN (a branch/tag NoDesk advances only after
+# vetting) instead of bare origin/main, resolved remotely each night (fetch +
+# reset to FETCH_HEAD). Fail-safe: pin unset => log and skip, never pull main.
+# Steps are &&-chained so a mid-run failure leaves prior rendered files intact
+# (render writes .env last, from the sourced env).
+DEPLOY_PIN="${HERMES_DEPLOY_PIN:-}"
+if [[ -n "${DEPLOY_PIN}" ]]; then
+  PULL_JOB="0 3 * * * mount -o remount,rw / 2>/dev/null; sudo -u ${HERMES_USER} bash -c 'cd ${HERMES_HOME} && git fetch origin ${DEPLOY_PIN} && git reset --hard FETCH_HEAD && set -a && . ./.env && set +a && python3 ./scripts/render_templates.py --templates-only' >> ${HERMES_HOME}/auto-pull.log 2>&1; chown -R ${HERMES_USER}:${HERMES_USER} ${HERMES_HOME}"
+else
+  PULL_JOB="0 3 * * * echo \"[hermes-pull] \$(date -u): HERMES_DEPLOY_PIN unset; nightly auto-update DISABLED (refusing to reset to origin/main)\" >> ${HERMES_HOME}/auto-pull.log 2>&1"
+  echo "[hermes-bootstrap] WARNING: HERMES_DEPLOY_PIN unset; nightly auto-update DISABLED. Set HERMES_DEPLOY_PIN to a deliberate release ref to re-enable."
+fi
 CODEX_AUTH_JOB="*/55 * * * * HERMES_HOME=${HERMES_HOME} sudo -u ${HERMES_USER} python3 ${HERMES_HOME}/scripts/sync_codex_cli_auth.py >> ${HERMES_HOME}/codex-cli-auth.log 2>&1"
 GITHUB_JOB="*/50 * * * * HERMES_HOME=${HERMES_HOME} ${HERMES_HOME}/scripts/refresh_github_token.sh >> ${HERMES_HOME}/github-token-refresh.log 2>&1"
 # On a freshly-provisioned VPS there is no existing crontab, so
@@ -235,7 +252,7 @@ GITHUB_JOB="*/50 * * * * HERMES_HOME=${HERMES_HOME} ${HERMES_HOME}/scripts/refre
 # leg so the merge always produces output, even when both legs find
 # nothing.
 {
-  { crontab -l 2>/dev/null || true; } | grep -v "rw_check\|git fetch origin main\|refresh_github_token\|sync_codex_cli_auth" || true
+  { crontab -l 2>/dev/null || true; } | grep -v "rw_check\|auto-pull.log\|refresh_github_token\|sync_codex_cli_auth" || true
   echo "$WATCHDOG_JOB"
   echo "$PULL_JOB"
   echo "$GITHUB_JOB"
