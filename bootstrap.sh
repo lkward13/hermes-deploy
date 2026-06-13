@@ -3,8 +3,11 @@ set -euo pipefail
 
 HERMES_USER="${HERMES_USER:-hermes}"
 HERMES_HOME="${HERMES_HOME:-/home/${HERMES_USER}/.hermes}"
-HERMES_AGENT_REPO="${HERMES_AGENT_REPO:-https://github.com/NousResearch/hermes-agent.git}"
-HERMES_AGENT_REF="${HERMES_AGENT_REF:-b816fd4e2}"
+# Default to NoDesk's fork (has the nodesk_* modules: media bridge, uploads,
+# push relay, event cursor, and the API/dashboard the mobile app needs).
+# build_template_snapshot.py / Railway override these per environment.
+HERMES_AGENT_REPO="${HERMES_AGENT_REPO:-https://github.com/lkward13/nodesk-hermes-agent.git}"
+HERMES_AGENT_REF="${HERMES_AGENT_REF:-nodesk-v2026.6.12-1}"
 HERMES_DEPLOY_REPO="${HERMES_DEPLOY_REPO:-}"
 HERMES_DEPLOY_REF="${HERMES_DEPLOY_REF:-main}"
 
@@ -86,7 +89,10 @@ run_as_hermes "python3 -m venv '${HERMES_HOME}/hermes-agent/venv'"
 # HERMES_HOME/hermes-agent first — hermes owns it.
 run_as_hermes "cd '${HERMES_HOME}/hermes-agent' && '${HERMES_HOME}/hermes-agent/venv/bin/python' -m pip install --upgrade pip wheel setuptools"
 run_as_hermes "cd '${HERMES_HOME}/hermes-agent' && '${HERMES_HOME}/hermes-agent/venv/bin/python' -m pip install slack-bolt slack-sdk"
-run_as_hermes "cd '${HERMES_HOME}/hermes-agent' && '${HERMES_HOME}/hermes-agent/venv/bin/pip' install -e ."
+# Install with the `web` extra so fastapi/uvicorn are present — the remote
+# dashboard (POST /auth/password-login, /api/auth/ws-ticket, /api/ws) the
+# mobile app connects through needs them.
+run_as_hermes "cd '${HERMES_HOME}/hermes-agent' && '${HERMES_HOME}/hermes-agent/venv/bin/pip' install -e '.[web]'"
 run_as_hermes "cd '${HERMES_HOME}/hermes-agent' && '${HERMES_HOME}/hermes-agent/venv/bin/pip' install python-dotenv requests python-telegram-bot"
 
 echo "[hermes-bootstrap] Installing voice extras (TTS + STT)"
@@ -117,6 +123,18 @@ if ! command -v codex >/dev/null 2>&1; then
 fi
 # Download Chromium + system deps (idempotent — skips if already installed)
 agent-browser install --with-deps || echo "[hermes-bootstrap] WARNING: agent-browser install failed; browser tool will not work until fixed"
+
+echo "[hermes-bootstrap] Building dashboard web UI (web_dist)"
+# The remote dashboard refuses to start unless the SPA is prebuilt at
+# hermes_cli/web_dist. Bake it into the snapshot here (needs Node, just
+# installed above) so per-customer provisioning never has to run the heavy
+# (~2.3GB peak) vite build on a live box — it would risk OOM and would also
+# fail on any box without Node.
+if [[ -d "${HERMES_HOME}/hermes-agent/web" ]]; then
+  run_as_hermes "cd '${HERMES_HOME}/hermes-agent/web' && npm install --no-audit --no-fund && npm run build" \
+    && echo "[hermes-bootstrap] web_dist built" \
+    || echo "[hermes-bootstrap] WARNING: web_dist build failed; remote dashboard will not serve until built"
+fi
 
 echo "[hermes-bootstrap] Adding hermes venv to system PATH"
 HERMES_BIN="${HERMES_HOME}/hermes-agent/venv/bin"
