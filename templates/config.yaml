@@ -71,7 +71,13 @@ tool_output:
   max_line_length: 2000
 compression:
   enabled: true
-  threshold: 0.5
+  # Compress at 65% of the context window instead of 50% — research-heavy chats
+  # (the agent pulls whole web pages into context) were hitting 50% and
+  # compressing every few turns, which churns the session into continuations.
+  # 0.65 of a 272k window still leaves generous headroom before a turn must
+  # compress, so long conversations stay intact much longer. (Trade-off: a bit
+  # more context per turn = more ChatGPT-subscription usage on marathon chats.)
+  threshold: 0.65
   target_ratio: 0.2
   protect_last_n: 20
   hygiene_hard_message_limit: 400
