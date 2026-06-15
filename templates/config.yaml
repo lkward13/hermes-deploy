@@ -84,6 +84,16 @@ compression:
   summary_model: gpt-5.4-mini
   summary_provider: openai-codex
   summary_base_url: null
+# Image / scanned-PDF understanding runs on a separate "auxiliary vision" model.
+# Left on `auto` it resolves (same chain as compression) to a non-Codex helper
+# the customer's ChatGPT/Codex account can't authenticate, so vision silently
+# fails. Pin it to the agent's own Codex model (gpt-5.4-mini is multimodal).
+# load_config() deep-merges this over the v27 default (user wins), so it sticks
+# without relying on the migration.
+auxiliary:
+  vision:
+    provider: openai-codex
+    model: gpt-5.4-mini
 prompt_caching:
   cache_ttl: 5m
 display:
