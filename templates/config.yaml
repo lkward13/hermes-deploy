@@ -75,8 +75,14 @@ compression:
   target_ratio: 0.2
   protect_last_n: 20
   hygiene_hard_message_limit: 400
-  summary_model: google/gemini-3-flash-preview
-  summary_provider: auto
+  # Compress on the agent's OWN model/provider. NoDesk agents authenticate only
+  # through the customer's ChatGPT/Codex OAuth — they have NO Google key — so the
+  # upstream default (google/gemini-3-flash-preview) makes auto-compression 400
+  # the moment a conversation is long enough to compress, which corrupts the
+  # session (a completed reply vanishes on reopen). Keep this on the Codex model.
+  # (Migrates to auxiliary.compression.{provider,model} at config v27.)
+  summary_model: gpt-5.4-mini
+  summary_provider: openai-codex
   summary_base_url: null
 prompt_caching:
   cache_ttl: 5m
