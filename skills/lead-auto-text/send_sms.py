@@ -54,7 +54,12 @@ def main():
     if not messages:
         print(json.dumps(result, indent=2))
 
-    return 0 if all(m.get("status") == "SUCCESS" for m in messages) else 1
+    ok = bool(messages) and all(m.get("status") == "SUCCESS" for m in messages)
+    if ok:
+        # NoDesk activity chip: surfaces a subtle "💬 Texted a lead" in the app.
+        # The gateway parses this marker from tool output and strips it.
+        print("[[NODESK_ACTIVITY|💬|Texted a lead|action]]")
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":
