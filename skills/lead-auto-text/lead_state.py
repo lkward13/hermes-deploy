@@ -43,7 +43,8 @@ def cmd_add(args):
         "name": args.name,
         "phone": phone,
         "email": args.email or "",
-        "source": args.source or "facebook",
+        "source": args.source or "",
+        "lead_id": args.lead_id or "",
         "fb_lead_id": args.fb_lead_id or "",
         "status": "new",
         "created_at": now,
@@ -179,8 +180,9 @@ def main():
     p_add.add_argument("--name", required=True)
     p_add.add_argument("--phone", required=True)
     p_add.add_argument("--email", default="")
-    p_add.add_argument("--source", default="facebook")
-    p_add.add_argument("--fb-lead-id", default="")
+    p_add.add_argument("--source", default="", help="gateway lead source (facebook, jobber, gohighlevel, website, ...)")
+    p_add.add_argument("--lead-id", default="", help="canonical gateway lead_id (from poll_leads.py) — needed to mark_lead.py later")
+    p_add.add_argument("--fb-lead-id", default="", help="deprecated; use --lead-id. kept for back-compat")
 
     p_update = sub.add_parser("update", help="Update lead fields")
     p_update.add_argument("--phone", required=True)
