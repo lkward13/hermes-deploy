@@ -41,7 +41,7 @@ def _load_env():
             continue
         if "=" in line:
             key, _, value = line.partition("=")
-            value = value.strip().strip("'"')
+            value = value.strip().strip("'\"")
             os.environ.setdefault(key.strip(), value)
 
 _load_env()
@@ -99,8 +99,7 @@ def _refresh_podio_token() -> str:
         if env_path.exists():
             content = env_path.read_text()
             content = re.sub(
-                r"^(PODIO_ACCESS_TOKEN=)['"]*[^'"
-]*['"]*",
+                r"^(PODIO_ACCESS_TOKEN=).*$",
                 f"PODIO_ACCESS_TOKEN='{new_token}'",
                 content, flags=re.MULTILINE,
             )
@@ -116,7 +115,7 @@ def _get_podio_token() -> str:
     if _podio_token_cache["access_token"] and _podio_token_cache["expires_at"] - now > 60:
         return _podio_token_cache["access_token"]
 
-    oauth_token = os.environ.get("PODIO_ACCESS_TOKEN", "").strip("'"" )
+    oauth_token = os.environ.get("PODIO_ACCESS_TOKEN", "").strip("'\"")
     if oauth_token:
         _podio_token_cache["access_token"] = oauth_token
         _podio_token_cache["expires_at"] = now + 28800
