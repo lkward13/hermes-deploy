@@ -303,6 +303,15 @@ else
 fi
 CODEX_AUTH_JOB="*/55 * * * * HERMES_HOME=${HERMES_HOME} sudo -u ${HERMES_USER} python3 ${HERMES_HOME}/scripts/sync_codex_cli_auth.py >> ${HERMES_HOME}/codex-cli-auth.log 2>&1"
 GITHUB_JOB="*/50 * * * * HERMES_HOME=${HERMES_HOME} ${HERMES_HOME}/scripts/refresh_github_token.sh >> ${HERMES_HOME}/github-token-refresh.log 2>&1"
+# Weekly fleet self-update (Sun, staggered AFTER the 03:00 nightly template
+# pull). camofox 04:07: track origin/main of the camofox-browser sidecar,
+# tab-creation health-check + rollback. hermes-agent 04:37: advance the agent
+# checkout to the newest vetted nodesk-v* RELEASE TAG (never bleeding-edge
+# main), gateway health-check + rollback. Both scripts live in the deploy repo
+# checkout, so the nightly PULL_JOB keeps the updaters themselves current.
+chmod +x "${HERMES_HOME}/scripts/camofox-update.sh" "${HERMES_HOME}/scripts/hermes-update.sh" 2>/dev/null || true
+CAMOFOX_UPDATE_JOB="7 4 * * 0 HERMES_HOME=${HERMES_HOME} HERMES_USER=${HERMES_USER} ${HERMES_HOME}/scripts/camofox-update.sh"
+HERMES_UPDATE_JOB="37 4 * * 0 HERMES_HOME=${HERMES_HOME} HERMES_USER=${HERMES_USER} ${HERMES_HOME}/scripts/hermes-update.sh run >/dev/null 2>&1"
 # On a freshly-provisioned VPS there is no existing crontab, so
 # `crontab -l` exits 1. With `set -euo pipefail`, that propagated
 # through this pipeline and silently killed the script — the
@@ -311,11 +320,13 @@ GITHUB_JOB="*/50 * * * * HERMES_HOME=${HERMES_HOME} ${HERMES_HOME}/scripts/refre
 # leg so the merge always produces output, even when both legs find
 # nothing.
 {
-  { crontab -l 2>/dev/null || true; } | grep -v "rw_check\|auto-pull.log\|refresh_github_token\|sync_codex_cli_auth" || true
+  { crontab -l 2>/dev/null || true; } | grep -v "rw_check\|auto-pull.log\|refresh_github_token\|sync_codex_cli_auth\|camofox-update.sh\|hermes-update.sh" || true
   echo "$WATCHDOG_JOB"
   echo "$PULL_JOB"
   echo "$GITHUB_JOB"
   echo "$CODEX_AUTH_JOB"
+  echo "$CAMOFOX_UPDATE_JOB"
+  echo "$HERMES_UPDATE_JOB"
 } | crontab -
 
 # Notify NoDesk that bootstrap finished, so it can flip the agent row's
