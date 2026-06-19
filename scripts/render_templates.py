@@ -41,6 +41,10 @@ DEFAULTS = {
     # emits CODEX_MODEL (from client.codex_model), so this only guards stray
     # manual renders.
     "CODEX_MODEL": "gpt-5.4-mini",
+    # Defaults match the previously-hardcoded config.yaml values, so an unset
+    # customer sees identical behavior; only a changed value differs.
+    "CODEX_REASONING_EFFORT": "medium",
+    "CODEX_PERSONALITY": "helpful",
     "OWNER_NAME": "Owner",
     "OWNER_PHONE": "",
     "OWNER_TELEGRAM_ID": "",
