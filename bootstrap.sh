@@ -124,6 +124,22 @@ fi
 # Download Chromium + system deps (idempotent — skips if already installed)
 agent-browser install --with-deps || echo "[hermes-bootstrap] WARNING: agent-browser install failed; browser tool will not work until fixed"
 
+echo "[hermes-bootstrap] Installing camofox-browser (anti-detect Firefox browsing on :9377)"
+# Camoufox is Firefox-based and needs GTK + a few X/audio libs that some base
+# images lack (Chrome bundles its own); install them so the browser launches.
+DEBIAN_FRONTEND=noninteractive apt-get install -y \
+  libgtk-3-0t64 libdbus-glib-1-2 libxt6t64 libx11-xcb1 libasound2t64 libpci3 libxtst6 2>&1 | tail -2 \
+  || DEBIAN_FRONTEND=noninteractive apt-get install -y \
+  libgtk-3-0 libdbus-glib-1-2 libxt6 libx11-xcb1 libasound2 libpci3 libxtst6 2>&1 | tail -2
+CAMOFOX_USER_HOME="$(dirname "${HERMES_HOME}")"
+CAMOFOX_DIR="${CAMOFOX_USER_HOME}/camofox-server"
+if [ ! -f "${CAMOFOX_DIR}/server.js" ]; then
+  run_as_hermes "git clone --depth 1 https://github.com/jo-inc/camofox-browser '${CAMOFOX_DIR}'" 2>&1 | tail -1
+  run_as_hermes "cd '${CAMOFOX_DIR}' && npm install --no-audit --no-fund" 2>&1 | tail -2
+  run_as_hermes "cd '${CAMOFOX_DIR}' && HOME='${CAMOFOX_USER_HOME}' npx --yes camoufox-js fetch" 2>&1 | tail -2
+fi
+[[ "${HERMES_USER}" != "root" ]] && chown -R "${HERMES_USER}:${HERMES_USER}" "${CAMOFOX_DIR}" 2>/dev/null || true
+
 echo "[hermes-bootstrap] Building dashboard web UI (web_dist)"
 # The remote dashboard refuses to start unless the SPA is prebuilt at
 # hermes_cli/web_dist. Bake it into the snapshot here (needs Node, just
@@ -185,7 +201,32 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
+  # Camofox anti-detect browser server (always-on). The agent routes its
+  # browser_* tools to it when CAMOFOX_URL is set (see .env.template). Enabled
+  # so every VPS cloned from the snapshot starts it on boot.
+  CAMOFOX_NODE="$(command -v node || echo /usr/bin/node)"
+  cat >/etc/systemd/system/camofox-browser.service <<EOF
+[Unit]
+Description=Camofox anti-detect browser server
+After=network.target
+
+[Service]
+Type=simple
+User=${HERMES_USER}
+WorkingDirectory=$(dirname "${HERMES_HOME}")/camofox-server
+Environment=CAMOFOX_PORT=9377
+Environment=HOME=$(dirname "${HERMES_HOME}")
+Environment=PATH=$(dirname "${CAMOFOX_NODE}"):/usr/local/bin:/usr/bin:/bin
+ExecStart=${CAMOFOX_NODE} --max-old-space-size=256 server.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
   systemctl daemon-reload
+  systemctl enable camofox-browser.service 2>/dev/null || true
   # In TEMPLATE_MODE we install the unit so the golden snapshot has it,
   # but we don't start it (.env has no customer creds yet). first_boot.sh
   # enables+starts the service per customer.
