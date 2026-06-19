@@ -17,7 +17,12 @@ set -uo pipefail
 MODE="${1:-run}"
 A="${HERMES_HOME}/hermes-agent"
 LOG="${HERMES_HOME}/hermes-update.log"
-PORT=8644
+# The box runs the agent code as TWO systemd services off the same checkout:
+# hermes-gateway (WS RPC) and hermes-dashboard (REST/WS the mobile app uses, on
+# :9119). :8644 is Caddy (a reverse proxy that answers 404 even when the agent
+# is down) so it is NOT a liveness signal. Restart whichever of these units
+# exist, and gate health on systemd-active + the dashboard answering on :9119.
+DASH_PORT=9119
 ts(){ date -u +'%Y-%m-%dT%H:%M:%SZ'; }
 log(){ echo "[$(ts)] $*" >> "$LOG"; }
 ghermes(){ sudo -u "${HERMES_USER}" git -C "$A" "$@"; }
@@ -28,11 +33,24 @@ flock -n 9 || { log "another run in progress; exit"; exit 0; }
 
 [ -d "$A/.git" ] || { log "no hermes-agent checkout at $A; abort"; exit 0; }
 
+# discover which agent services this box actually runs
+SERVICES=""
+for s in hermes-gateway hermes-dashboard; do
+  systemctl cat "$s.service" >/dev/null 2>&1 && SERVICES="${SERVICES} $s"
+done
+
+restart_services(){ for s in $SERVICES; do systemctl restart "$s"; done; }
+
 probe(){
-  [ "$(systemctl is-active hermes-gateway 2>/dev/null)" = active ] || return 1
-  local code
-  code=$(curl -s -m 5 -o /dev/null -w '%{http_code}' "localhost:$PORT/" 2>/dev/null || echo 000)
-  [ "$code" != 000 ]
+  local s
+  for s in $SERVICES; do
+    [ "$(systemctl is-active "$s" 2>/dev/null)" = active ] || return 1
+  done
+  # dashboard liveness on its OWN port (not the Caddy proxy) when present
+  if echo "$SERVICES" | grep -q hermes-dashboard; then
+    [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "localhost:$DASH_PORT/" 2>/dev/null || echo 000)" != 000 ] || return 1
+  fi
+  return 0
 }
 
 OLD=$(ghermes rev-parse HEAD)
@@ -64,17 +82,21 @@ if [ "$DEPS_CHANGED" = 1 ]; then
   log "deps changed; pip install -e .[web]"
   ( cd "$A" && sudo -u "${HERMES_USER}" "$A/venv/bin/pip" install -q -e '.[web]' ) >>"$LOG" 2>&1 || log "WARN pip install non-zero (continuing to health-check)"
 fi
-if [ "$WEB_CHANGED" = 1 ] && [ -d "$A/web" ]; then
-  log "web/ changed; rebuilding dashboard SPA"
-  ( cd "$A/web" && sudo -u "${HERMES_USER}" npm install --no-audit --no-fund && sudo -u "${HERMES_USER}" npm run build ) >>"$LOG" 2>&1 || log "WARN web build failed"
+if [ "$WEB_CHANGED" = 1 ]; then
+  # Deliberately do NOT run the vite build on a live box: it peaks ~2.3GB and
+  # can OOM a small VPS unattended (bootstrap.sh bakes web_dist into the
+  # snapshot for exactly this reason). web_dist is gitignored, so the prior
+  # built SPA stays in place and keeps serving — only cosmetically stale until
+  # the next snapshot rebuild refreshes it. Backend update still applies.
+  log "web/ changed but NOT rebuilding on live box (OOM risk); dashboard serves prior web_dist until next snapshot rebuild"
 fi
 chown -R "${HERMES_USER}:${HERMES_USER}" "$A"
-systemctl restart hermes-gateway
+restart_services
 
 ok=0
 for i in $(seq 1 12); do sleep 5; if probe; then ok=1; break; fi; done
 if [ "$ok" = 1 ]; then
-  log "OK updated to $LATEST; gateway healthy"
+  log "OK updated to $LATEST; services healthy ($SERVICES)"
   exit 0
 fi
 
@@ -85,7 +107,7 @@ if [ "$DEPS_CHANGED" = 1 ]; then
   ( cd "$A" && sudo -u "${HERMES_USER}" "$A/venv/bin/pip" install -q -e '.[web]' ) >>"$LOG" 2>&1 || log "WARN rollback pip non-zero"
 fi
 chown -R "${HERMES_USER}:${HERMES_USER}" "$A"
-systemctl restart hermes-gateway
+restart_services
 rok=0
 for i in $(seq 1 12); do sleep 5; if probe; then rok=1; break; fi; done
 if [ "$rok" = 1 ]; then log "ROLLBACK OK; back on $OLD_REF and healthy"; else log "ROLLBACK STILL UNHEALTHY on $OLD_REF -- MANUAL ATTENTION NEEDED"; fi
