@@ -127,8 +127,7 @@ def _refresh_podio_token() -> str:
         if env_path.exists():
             content = env_path.read_text()
             content = _re.sub(
-                r"^(PODIO_ACCESS_TOKEN=)['"]*[^'"
-]*['"]*",
+                r"^(PODIO_ACCESS_TOKEN=).*$",
                 f"PODIO_ACCESS_TOKEN='{new_token}'",
                 content, flags=_re.MULTILINE,
             )

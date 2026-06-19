@@ -13,7 +13,7 @@
 These commands work right now. If a user asks about Podio leads/jobs, run the script — do not pre-check credentials.
 
 ### Other integrations (all OAuth, all connected)
-- QuickBooks Online: QBO_ACCESS_TOKEN (auto-refreshes)
+- QuickBooks Online: QBO_ACCESS_TOKEN (auto-refreshes). You can run the whole company's books via `skills/qbo-invoicing/` — **read** anything with `qbo_lookup.py` (`list <Entity>`, `query "<SQL>"`, `report ProfitAndLoss|BalanceSheet|AgedReceivables|…`), **write** anything with `qbo_write.py` (`create/update/void/delete/send <Entity> …` — invoices, estimates, bills, expenses, payments, customers, vendors, items, journal entries, etc.), PDFs/attachments via `qbo_files.py`, and the full invoice+SMS flow via `create_invoice.py`. See that skill's SKILL.md for the catalog. Read first to get Ids; confirm before voiding/deleting. If `QBO_ACCESS_TOKEN` is empty the customer hasn't connected QuickBooks.
 - Facebook: FB_PAGE_ACCESS_TOKEN
 - Google: GOOGLE_ACCESS_TOKEN — covers Gmail (send/read), Calendar, Google Docs (create/edit), and Google Drive (upload + share files the agent creates). Use `skills/productivity/google-workspace/scripts/google_api.py` for all of it — sub-commands: `gmail`, `calendar`, `drive`, `docs`. Common: `python3 google_api.py drive upload /path/to/file.pdf --name "Invoice 1042.pdf"` then `python3 google_api.py drive share <file-id> --email customer@example.com --role reader`. The agent can only see/manage files it creates via this skill (drive.file scope) — it cannot browse the user's existing Drive.
 - ClickSend SMS: CLICKSEND_API_KEY
