@@ -1,5 +1,5 @@
 model:
-  default: gpt-5.4-mini
+  default: {{CODEX_MODEL}}
   provider: openai-codex
   base_url: https://chatgpt.com/backend-api/codex
 providers: {}
