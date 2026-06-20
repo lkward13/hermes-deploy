@@ -57,6 +57,42 @@ def save_tokens(data: dict):
     with open(TOKENS_FILE, "w") as f:
         json.dump(data, f, indent=2)
     os.chmod(TOKENS_FILE, 0o600)
+    _writeback_to_nodesk(data)
+
+
+def _writeback_to_nodesk(tokens: dict) -> None:
+    """Report the (possibly freshly-rotated) QBO token back to NoDesk so central
+    stays authoritative.
+
+    QBO rotates the refresh token on every refresh; this file is the agent's
+    source of truth, but NoDesk also keeps a copy it seeds onto a (re)provisioned
+    box. Without this write-back, central's copy goes stale and a rebuilt box
+    would be seeded a dead token (silent QBO disconnect). Best-effort: never
+    raises, short timeout — local persistence already succeeded by the time we
+    get here. NoDesk only UPDATES an existing connection, authenticated by the
+    agent's own client id (same trust as the GitHub token endpoint).
+    """
+    base = os.environ.get("NODESK_BASE_URL", "").rstrip("/")
+    client_id = os.environ.get("HERMES_CLIENT_ID", "")
+    access_token = tokens.get("access_token", "")
+    refresh_token = tokens.get("refresh_token", "")
+    if not base or not client_id or not access_token or not refresh_token:
+        return
+    try:
+        requests.post(
+            f"{base}/api/qbo/token/{client_id}",
+            headers={"X-Hermes-Token": client_id, "Content-Type": "application/json"},
+            json={
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "realm_id": tokens.get("realm_id", ""),
+                "expires_in": tokens.get("expires_in"),
+                "token_type": tokens.get("token_type", "Bearer"),
+            },
+            timeout=10,
+        )
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
