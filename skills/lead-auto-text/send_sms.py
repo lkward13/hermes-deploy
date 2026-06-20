@@ -8,9 +8,27 @@ import sys
 
 import requests
 
+
+def _load_hermes_env_file():
+    from pathlib import Path
+    env_path = Path.home() / ".hermes" / ".env"
+    if not env_path.exists():
+        return
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" in line:
+            key, _, value = line.partition("=")
+            value = value.strip().strip('"').strip("'")
+            key = key.strip()
+            if not os.environ.get(key):
+                os.environ[key] = value
+
+_load_hermes_env_file()
 CLICKSEND_USERNAME = os.environ.get("CLICKSEND_USERNAME", "")
 CLICKSEND_API_KEY = os.environ.get("CLICKSEND_API_KEY", "")
-CLICKSEND_FROM = os.environ.get("CLICKSEND_FROM", "")
+CLICKSEND_FROM = os.environ.get("CLICKSEND_FROM", "") or os.environ.get("CLICKSEND_FROM_NUMBER", "")
 API_URL = "https://rest.clicksend.com/v3/sms/send"
 
 

@@ -55,13 +55,45 @@ from qbo_config import get_base_url
 from qbo_auth import get_access_token, get_realm_id
 
 
+def _load_hermes_env_file():
+    from pathlib import Path
+    env_path = Path.home() / ".hermes" / ".env"
+    if not env_path.exists():
+        return
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" in line:
+            key, _, value = line.partition("=")
+            value = value.strip().strip('"').strip("'")
+            key = key.strip()
+            if not os.environ.get(key):
+                os.environ[key] = value
+
+
+def _parse_email_list(email_value: str | None) -> list[str]:
+    if not email_value:
+        return []
+    raw = email_value
+    for sep in ["\n", ";"]:
+        raw = raw.replace(sep, ",")
+    emails = []
+    for part in raw.split(","):
+        cleaned = part.strip()
+        if cleaned and cleaned not in emails:
+            emails.append(cleaned)
+    return emails
+
+
 # ---------------------------------------------------------------------------
 # ClickSend SMS config
 # ---------------------------------------------------------------------------
 
+_load_hermes_env_file()
 CLICKSEND_USERNAME = os.environ.get("CLICKSEND_USERNAME", "")
 CLICKSEND_API_KEY = os.environ.get("CLICKSEND_API_KEY", "")
-CLICKSEND_FROM = os.environ.get("CLICKSEND_FROM", "")
+CLICKSEND_FROM = os.environ.get("CLICKSEND_FROM", "") or os.environ.get("CLICKSEND_FROM_NUMBER", "")
 CLICKSEND_API_URL = "https://rest.clicksend.com/v3/sms/send"
 
 
@@ -129,7 +161,8 @@ def _refresh_podio_token() -> str:
             content = _re.sub(
                 r"^(PODIO_ACCESS_TOKEN=).*$",
                 f"PODIO_ACCESS_TOKEN='{new_token}'",
-                content, flags=_re.MULTILINE,
+                content,
+                flags=_re.MULTILINE,
             )
             env_path.write_text(content)
         os.environ["PODIO_ACCESS_TOKEN"] = new_token
@@ -258,25 +291,34 @@ def find_customer(display_name: str) -> dict | None:
     return customers[0] if customers else None
 
 
-def create_customer(display_name: str, email: str = None) -> dict:
+def create_customer(display_name: str, email: str = None, phone: str = None) -> dict:
     payload = {"DisplayName": display_name}
     if email:
         payload["PrimaryEmailAddr"] = {"Address": email}
+    if phone:
+        payload["PrimaryPhone"] = {"FreeFormNumber": phone}
     resp = _api_post("customer", payload)
     return resp["Customer"]
 
 
-def find_or_create_customer(display_name: str, email: str = None) -> dict:
+def find_or_create_customer(display_name: str, email: str = None, phone: str = None) -> dict:
     existing = find_customer(display_name)
     if existing:
         print(f"Found existing customer: {display_name} (ID: {existing['Id']})")
+        updated = dict(existing)
+        changed = False
         if email and existing.get("PrimaryEmailAddr", {}).get("Address") != email:
-            existing["PrimaryEmailAddr"] = {"Address": email}
-            updated = _api_post("customer", existing)
-            return updated["Customer"]
+            updated["PrimaryEmailAddr"] = {"Address": email}
+            changed = True
+        if phone and existing.get("PrimaryPhone", {}).get("FreeFormNumber") != phone:
+            updated["PrimaryPhone"] = {"FreeFormNumber": phone}
+            changed = True
+        if changed:
+            updated_resp = _api_post("customer", updated)
+            return updated_resp["Customer"]
         return existing
     print(f"Creating new customer: {display_name}")
-    return create_customer(display_name, email)
+    return create_customer(display_name, email, phone)
 
 
 # ---------------------------------------------------------------------------
@@ -298,6 +340,7 @@ def create_invoice(
     customer_email: str = None,
     send_email: bool = True,
     memo: str = None,
+    send_copies_to: list[str] | None = None,
 ) -> dict:
     """
     Create an invoice in QBO.
@@ -344,23 +387,34 @@ def create_invoice(
         print("Payment link: not available (may appear after sending)")
 
     if send_email and customer_email:
-        send_invoice(invoice["Id"])
+        send_invoice(invoice["Id"], customer_email)
         invoice = get_invoice_with_link(invoice["Id"])
         if not payment_link and invoice.get("InvoiceLink"):
             print(f"Payment link (post-send): {invoice['InvoiceLink']}")
+
+    if send_email and send_copies_to:
+        for copy_email in send_copies_to:
+            if copy_email and copy_email != customer_email:
+                send_invoice(invoice["Id"], copy_email)
 
     return invoice
 
 
 def send_invoice(invoice_id: str, email: str = None) -> dict:
     """Send an invoice via email."""
+    invoice = get_invoice_with_link(invoice_id)
     url = _api_url(f"invoice/{invoice_id}/send")
     params: dict = {}
     if email:
         params["sendTo"] = email
     params = _merge_params(params)
-    # Empty body with Content-Type: application/json often yields QBO HTTP 500; send explicit {}.
-    resp = requests.post(url, headers=_headers(), params=params, json={})
+    payload = {
+        "Id": invoice["Id"],
+        "SyncToken": invoice["SyncToken"],
+    }
+    if email:
+        payload["DeliveryAddress"] = {"Address": email}
+    resp = requests.post(url, headers=_headers(), params=params, json=payload)
     if resp.status_code >= 400:
         print(f"Invoice send error {resp.status_code}: {resp.text}", file=sys.stderr)
         resp.raise_for_status()
@@ -545,7 +599,11 @@ def main():
     if len(quantities) < len(args.items):
         quantities.extend([1.0] * (len(args.items) - len(quantities)))
 
-    customer = find_or_create_customer(args.customer, args.email)
+    email_recipients = _parse_email_list(args.email)
+    primary_email = email_recipients[0] if email_recipients else None
+    additional_emails = email_recipients[1:] if len(email_recipients) > 1 else []
+
+    customer = find_or_create_customer(args.customer, primary_email, args.phone)
     due_date = (datetime.now() + timedelta(days=args.due_days)).strftime("%Y-%m-%d")
 
     line_items = [
@@ -557,9 +615,10 @@ def main():
         customer_id=customer["Id"],
         line_items=line_items,
         due_date=due_date,
-        customer_email=args.email,
+        customer_email=primary_email,
         send_email=not args.no_send,
         memo=args.memo,
+        send_copies_to=additional_emails,
     )
 
     payment_link = invoice.get("InvoiceLink")
