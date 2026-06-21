@@ -3,7 +3,14 @@ model:
   provider: openai-codex
   base_url: https://chatgpt.com/backend-api/codex
 providers: {}
-fallback_providers: []
+# Loaner brain: when the primary (openai-codex = the customer's ChatGPT) can't
+# authenticate (a new/trial agent that hasn't connected ChatGPT yet), the agent
+# falls through to gpt-4o-mini on the shared NoDesk OPENAI_API_KEY so it can still
+# think and run the onboarding. A connected customer never hits this (no cost),
+# except as resilience if their ChatGPT hiccups.
+fallback_providers:
+  - provider: openai
+    model: gpt-4o-mini
 credential_pool_strategies: {}
 toolsets:
 - hermes-cli
