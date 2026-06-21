@@ -123,7 +123,10 @@ tts:
     voice: en-US-AriaNeural
 stt:
   enabled: true
-  provider: local
+  # Rendered from STT_PROVIDER (NoDesk bootstrap): "groq" when a shared Groq key
+  # is configured (fast, high-quality whisper-large-v3-turbo), else "local"
+  # (the on-box faster-whisper fallback below).
+  provider: {{STT_PROVIDER}}
   local:
     model: base
     language: ''
