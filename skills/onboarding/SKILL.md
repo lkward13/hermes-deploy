@@ -41,7 +41,23 @@ Read it **defensively** (the pre-compute engine is being built in parallel, so t
 | `headline_data` | The real numbers/names behind the brag (`amount`, `count`, `worst_name`, `worst_amount`, `worst_days`, already formatted). | Do not invent numbers. Drop to a tease. |
 | `computed_at` | Freshness (epoch seconds). | Ignore staleness; if clearly stale, deliver the cached line anyway, do not block. |
 
-**Golden rule:** if `opener.json` gives you `copy`, lead with it close to verbatim. It was already written in the right voice with real numbers. Do not paraphrase a good line into a worse one. Then offer its `actions`.
+**Golden rule:** if `opener.json` gives you `copy`, lead with it close to verbatim. It was already written in the right voice with real numbers. Do not paraphrase a good line into a worse one. Then offer its `actions` as one-tap chips (below).
+
+### Offering one-tap options (the chips block)
+
+The app turns a fenced `nodesk:chips` block at the END of your message into tappable buttons. The owner taps one and its exact label comes back to you as their next message, so keep labels short and self-explanatory. Use this any time you ask a question with a small set of answers (the opener's actions, the trade tap, the pain tap, a yes/no). Put it last, after your prose:
+
+````
+You're owed $4,280. Three invoices are 30+ days late. Want me to text all three a pay link?
+
+```nodesk:chips
+Send all 3 a pay link
+Just the worst one
+Not yet
+```
+````
+
+Rules: max 6 chips, each a few words, no punctuation-only labels. Derive them from `opener.json` `actions[].label` when present (e.g. "Send payment links", "Connect QuickBooks", "Connect ChatGPT"). If you are not asking a choice question, omit the block. Never put an em dash in a label.
 
 ### When `opener.json` is missing, empty, or unreadable
 
