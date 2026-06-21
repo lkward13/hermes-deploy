@@ -293,20 +293,25 @@ def evaluate(ctx) -> list:
 
         parts = []
 
+        # Only speak to a metric with real activity THIS week. A cheerful weekly
+        # pulse must never lead with "$0, down 100% from last week": a dead week
+        # reads as something broken, not an insight. If nothing has current
+        # activity the whole pulse is suppressed below (a deliberate "your
+        # register went quiet" alert belongs in a separate, gentler rule).
         rev = totals.get("revenue")
-        if rev is not None and (rev[0] > 0 or rev[1] > 0):
+        if rev is not None and rev[0] > 0:
             parts.append(
                 "{}{} brought in".format(_money(rev[0]), _swing_phrase(rev[0], rev[1]))
             )
 
         col = totals.get("collections")
-        if col is not None and (col[0] > 0 or col[1] > 0):
+        if col is not None and col[0] > 0:
             parts.append(
                 "{}{} collected".format(_money(col[0]), _swing_phrase(col[0], col[1]))
             )
 
         leads = totals.get("leads")
-        if leads is not None and (leads[0] > 0 or leads[1] > 0):
+        if leads is not None and leads[0] > 0:
             n = int(round(leads[0]))
             noun = "new customer" if n == 1 else "new customers"
             parts.append("{} {}{}".format(n, noun, _swing_phrase(leads[0], leads[1])))
