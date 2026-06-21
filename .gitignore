@@ -38,3 +38,15 @@ fb_secrets.json
 credentials/
 pairing/
 notes/
+
+# Skill-curator runtime state (written on-box by the agent's skill curator, not
+# source). Keeping these out of git stops them showing as untracked drift and
+# prevents an accidental commit of box-local state. Only the dot-prefixed state
+# artifacts are listed; real skills (non-dotted dirs under skills/) stay tracked.
+skills/.archive/
+skills/.curator_backups/
+skills/.curator_state
+skills/.hub/
+skills/.bundled_manifest
+skills/.usage.json
+skills/.usage.json.lock
