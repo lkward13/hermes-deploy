@@ -216,6 +216,11 @@ def _parse_item(item: dict) -> dict:
         "email": "",
         "job_description": "",
         "date": "",
+        # The item's real creation timestamp (Podio top-level created_on, a full
+        # "YYYY-MM-DD HH:MM:SS" in UTC). The "date" field above is a custom app
+        # field (often date-only), so anything that needs true lead age must use
+        # created_on, not date.
+        "created_on": item.get("created_on", ""),
         "invoice_status": "",
         "link": item.get("link", ""),
     }

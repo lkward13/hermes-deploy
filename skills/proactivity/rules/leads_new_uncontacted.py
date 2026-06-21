@@ -236,7 +236,11 @@ def _podio_leads(ctx):
         if not iid:
             continue
         name = _name_or("A new lead", item.get("name"), item.get("title"))
-        created = _parse_dt(item.get("date"))
+        # Use the item's REAL creation timestamp (created_on, full datetime), not
+        # the "date" custom field (often date-only -> parses to midnight -> a
+        # just-arrived lead would read "18 hours ago"). Fall back to date only if
+        # created_on is missing.
+        created = _parse_dt(item.get("created_on") or item.get("date"))
         contacted_text = str(item.get("invoice_status") or "")
         out.append({
             "id": str(iid),
