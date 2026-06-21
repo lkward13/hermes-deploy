@@ -28,6 +28,17 @@ def main() -> int:
     except Exception:
         message = ""
     if message and message.strip():
+        # In-app delivery: post the nudge into the owner's NoDesk app chat (it
+        # renders text + chips) and fire a push. The app reads a different
+        # process than this cron, so this goes through the shared SessionDB +
+        # push backend. Best-effort, never blocks the platform delivery below.
+        try:
+            from hermes_cli import nodesk_nudge
+            nodesk_nudge.deliver_to_app(message)
+        except Exception:
+            pass
+        # Telegram / Slack: stdout is delivered by chronos to the job's
+        # deliver target (broadcast -> every platform home channel).
         sys.stdout.write(message)
     return 0
 
