@@ -303,6 +303,11 @@ else
 fi
 CODEX_AUTH_JOB="*/55 * * * * HERMES_HOME=${HERMES_HOME} sudo -u ${HERMES_USER} python3 ${HERMES_HOME}/scripts/sync_codex_cli_auth.py >> ${HERMES_HOME}/codex-cli-auth.log 2>&1"
 GITHUB_JOB="*/50 * * * * HERMES_HOME=${HERMES_HOME} ${HERMES_HOME}/scripts/refresh_github_token.sh >> ${HERMES_HOME}/github-token-refresh.log 2>&1"
+# Onboarding "opener" pre-compute (see first_boot.sh for the rationale): runs
+# the brag ladder and writes ${HERMES_HOME}/opener.json so first open is a file
+# read, not a live sweep. Installed here so it rides the snapshot; first_boot
+# reinstalls + fires a one-time run once real creds are present. Best-effort.
+OPENER_JOB="17 */4 * * * sudo -u ${HERMES_USER} bash -c 'cd ${HERMES_HOME}/hermes-agent && set -a && . ${HERMES_HOME}/.env && set +a && HERMES_HOME=${HERMES_HOME} ./venv/bin/python -m hermes_cli.nodesk_opener_fetchers' >> ${HERMES_HOME}/opener-refresh.log 2>&1"
 # On a freshly-provisioned VPS there is no existing crontab, so
 # `crontab -l` exits 1. With `set -euo pipefail`, that propagated
 # through this pipeline and silently killed the script — the
@@ -311,11 +316,12 @@ GITHUB_JOB="*/50 * * * * HERMES_HOME=${HERMES_HOME} ${HERMES_HOME}/scripts/refre
 # leg so the merge always produces output, even when both legs find
 # nothing.
 {
-  { crontab -l 2>/dev/null || true; } | grep -v "rw_check\|auto-pull.log\|refresh_github_token\|sync_codex_cli_auth" || true
+  { crontab -l 2>/dev/null || true; } | grep -v "rw_check\|auto-pull.log\|refresh_github_token\|sync_codex_cli_auth\|nodesk_opener_fetchers" || true
   echo "$WATCHDOG_JOB"
   echo "$PULL_JOB"
   echo "$GITHUB_JOB"
   echo "$CODEX_AUTH_JOB"
+  echo "$OPENER_JOB"
 } | crontab -
 
 # Notify NoDesk that bootstrap finished, so it can flip the agent row's

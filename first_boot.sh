@@ -65,12 +65,22 @@ else
 fi
 CODEX_AUTH_JOB="*/55 * * * * HERMES_HOME=${HERMES_HOME} sudo -u ${HERMES_USER} python3 ${HERMES_HOME}/scripts/sync_codex_cli_auth.py >> ${HERMES_HOME}/codex-cli-auth.log 2>&1"
 GITHUB_JOB="*/50 * * * * HERMES_HOME=${HERMES_HOME} ${HERMES_HOME}/scripts/refresh_github_token.sh >> ${HERMES_HOME}/github-token-refresh.log 2>&1"
+# Onboarding "opener" pre-compute. Runs the brag ladder over whatever
+# integrations are connected and writes ${HERMES_HOME}/opener.json so the
+# first app open is a single file read, never a live provider sweep. Runs AS
+# the hermes user (the .hermes git checkout + token files are hermes-owned) and
+# sources .env so the skill fetchers see the per-tenant creds. Best-effort: the
+# engine never raises and degrades to a connect-something opener when there is
+# no data, so a failure here never blocks anything. Every 4 hours; a one-time
+# run is fired below so opener.json exists before the very first open.
+OPENER_JOB="17 */4 * * * sudo -u ${HERMES_USER} bash -c 'cd ${HERMES_HOME}/hermes-agent && set -a && . ${HERMES_HOME}/.env && set +a && HERMES_HOME=${HERMES_HOME} ./venv/bin/python -m hermes_cli.nodesk_opener_fetchers' >> ${HERMES_HOME}/opener-refresh.log 2>&1"
 {
-  { crontab -l 2>/dev/null || true; } | grep -v "rw_check\|auto-pull.log\|refresh_github_token\|sync_codex_cli_auth" || true
+  { crontab -l 2>/dev/null || true; } | grep -v "rw_check\|auto-pull.log\|refresh_github_token\|sync_codex_cli_auth\|nodesk_opener_fetchers" || true
   echo "$WATCHDOG_JOB"
   echo "$PULL_JOB"
   echo "$GITHUB_JOB"
   echo "$CODEX_AUTH_JOB"
+  echo "$OPENER_JOB"
 } | crontab -
 
 # Start the gateway. The systemd unit was installed by bootstrap.sh during
@@ -82,6 +92,17 @@ systemctl enable --now hermes-gateway.service
 # Give it a moment to come up; report status for visibility.
 sleep 3
 systemctl --no-pager --full status hermes-gateway.service | head -20 || true
+
+# Pre-compute the onboarding opener once now, so opener.json is on disk before
+# the customer's very first app open ("while you were downloading this" is then
+# literally true). Best-effort: the engine never raises and degrades to a
+# connect-something opener when nothing is connected yet, so this never blocks
+# first-boot completion. The 4-hourly cron installed above keeps it fresh.
+echo "[first-boot] Pre-computing onboarding opener"
+sudo -u "${HERMES_USER}" bash -c \
+  "cd ${HERMES_HOME}/hermes-agent && set -a && . ${HERMES_HOME}/.env && set +a && HERMES_HOME=${HERMES_HOME} ./venv/bin/python -m hermes_cli.nodesk_opener_fetchers" \
+  >> "${HERMES_HOME}/opener-refresh.log" 2>&1 \
+  || echo "[first-boot] opener pre-compute failed (non-fatal; cron will retry)"
 
 # Notify NoDesk so the agent's status flips from "bootstrapping" to "active"
 # and any post-active flows (welcome message, credential re-sync) fire.
