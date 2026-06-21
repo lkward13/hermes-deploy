@@ -79,7 +79,7 @@ def evaluate(ctx) -> list:
         records = ctx.run_skill(
             "qbo-invoicing",
             "qbo_lookup.py",
-            ["list", "Invoice", "--where", "Balance > '0'", "--limit", "200", "--json"],
+            ["--json", "list", "Invoice", "--where", "Balance > '0'", "--limit", "200"],
         )
         if not isinstance(records, list):
             return []

@@ -143,8 +143,8 @@ def _qbo_metrics(ctx, this_start, last_start):
     try:
         invoices = ctx.run_skill(
             "qbo-invoicing", "qbo_lookup.py",
-            ["list", "Invoice", "--where", "TxnDate >= '{}'".format(cutoff),
-             "--limit", "1000", "--json"],
+            ["--json", "list", "Invoice", "--where", "TxnDate >= '{}'".format(cutoff),
+             "--limit", "1000"],
         )
         if isinstance(invoices, list):
             rev_this = rev_last = 0.0
@@ -164,8 +164,8 @@ def _qbo_metrics(ctx, this_start, last_start):
     try:
         payments = ctx.run_skill(
             "qbo-invoicing", "qbo_lookup.py",
-            ["list", "Payment", "--where", "TxnDate >= '{}'".format(cutoff),
-             "--limit", "1000", "--json"],
+            ["--json", "list", "Payment", "--where", "TxnDate >= '{}'".format(cutoff),
+             "--limit", "1000"],
         )
         if isinstance(payments, list):
             col_this = col_last = 0.0
@@ -185,9 +185,9 @@ def _qbo_metrics(ctx, this_start, last_start):
     try:
         customers = ctx.run_skill(
             "qbo-invoicing", "qbo_lookup.py",
-            ["list", "Customer",
+            ["--json", "list", "Customer",
              "--where", "Metadata.CreateTime >= '{}'".format(cutoff),
-             "--limit", "1000", "--json"],
+             "--limit", "1000"],
         )
         if isinstance(customers, list):
             lead_this = lead_last = 0
