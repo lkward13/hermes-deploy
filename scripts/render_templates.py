@@ -45,6 +45,10 @@ DEFAULTS = {
     # customer sees identical behavior; only a changed value differs.
     "CODEX_REASONING_EFFORT": "medium",
     "CODEX_PERSONALITY": "helpful",
+    # STT defaults to on-box "local" so a render without NoDesk's env never
+    # leaves a placeholder; NoDesk emits "groq" + the key when configured.
+    "STT_PROVIDER": "local",
+    "GROQ_API_KEY": "",
     "OWNER_NAME": "Owner",
     "OWNER_PHONE": "",
     "OWNER_TELEGRAM_ID": "",
