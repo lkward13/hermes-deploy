@@ -83,6 +83,54 @@ OPENER_JOB="17 */4 * * * sudo -u ${HERMES_USER} bash -c 'cd ${HERMES_HOME}/herme
   echo "$OPENER_JOB"
 } | crontab -
 
+# Seed the proactivity tick (chronos no-agent job) so the agent proactively
+# watches connected tools and pings the owner. Written straight into the
+# chronos store BEFORE the gateway starts (no concurrency with the scheduler)
+# and idempotent on the job id, so re-running first-boot never duplicates it.
+# deliver=broadcast fans each nudge to every connected platform (Telegram/Slack)
+# + the app (the script itself calls deliver_to_app). Best-effort: a failure
+# here only means no proactive nudges, never a broken boot.
+echo "[first-boot] Seeding proactivity tick"
+sudo -u "${HERMES_USER}" HERMES_HOME="${HERMES_HOME}" python3 - <<'PYSEED' || echo "[first-boot] proactivity tick seed failed (non-fatal)"
+import json, os
+home = os.environ["HERMES_HOME"]
+path = os.path.join(home, "cron", "jobs.json")
+os.makedirs(os.path.dirname(path), exist_ok=True)
+try:
+    with open(path) as f:
+        store = json.load(f)
+except Exception:
+    store = {"jobs": []}
+if isinstance(store, list):
+    store = {"jobs": store}
+jobs = store.setdefault("jobs", [])
+if not any(isinstance(j, dict) and j.get("id") == "nodesk-proactivity" for j in jobs):
+    jobs.append({
+        "id": "nodesk-proactivity",
+        "name": "nodesk-proactivity",
+        "prompt": "",
+        "skills": [],
+        "skill": None,
+        "model": None,
+        "provider": None,
+        "base_url": None,
+        "script": "proactivity_tick.py",
+        "no_agent": True,
+        "schedule": {"kind": "interval", "minutes": 5, "display": "every 5m"},
+        "schedule_display": "every 5m",
+        "repeat": {"times": None, "completed": 0},
+        "enabled": True,
+        "state": "scheduled",
+        "deliver": "broadcast",
+        "origin": None,
+    })
+    with open(path, "w") as f:
+        json.dump(store, f, indent=1)
+    print("[first-boot] proactivity tick registered")
+else:
+    print("[first-boot] proactivity tick already present")
+PYSEED
+
 # Start the gateway. The systemd unit was installed by bootstrap.sh during
 # the snapshot build but never enabled (TEMPLATE_MODE bail). Now that .env
 # has customer credentials, light it up.
