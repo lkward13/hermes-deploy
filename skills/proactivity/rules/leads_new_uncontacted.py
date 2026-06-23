@@ -365,6 +365,9 @@ def evaluate(ctx):
                         ),
                         count=1,
                         urgency="high",
+                        # Lets the owner Done/Snooze this lead by name straight
+                        # from the nudge (engine builds name:<provider>:<name>).
+                        meta={"provider": provider, "name": who},
                     )
                 )
 
