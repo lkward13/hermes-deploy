@@ -34,14 +34,45 @@ RULE = RuleSpec(
     category="hot_leads",
     cadence_minutes=5,
     default_autonomy="draft",
-    cooldown_hours=1.0,
+    # One nudge per new lead, full stop. cooldown >= lookback means once a lead
+    # is nudged it has aged out of the "new" window before the cooldown lapses,
+    # so it never re-fires. (Was 1.0, which re-nagged the SAME lead every hour
+    # for the whole 24h window -> up to 24 pings for one lead. That, plus owners
+    # handling a lead without updating Podio's invoice_status, was the spam:
+    # leads they already responded to kept re-alerting hourly.)
+    cooldown_hours=26.0,
     materiality={"min_count": 1},
 )
 
 # How far back a lead can have been created and still count as "new". Speed-to-lead
 # wants minutes, but we use a generous window so a lead that arrived while the agent
-# was briefly down is still caught the next tick. The 1 hour cooldown stops re-nags.
+# was briefly down is still caught the next tick.
 _LOOKBACK_HOURS = 24.0
+
+# Junk/placeholder lead names that phone systems (CallRail etc.) drop into the CRM
+# for spam, wrong numbers, and unanswered rings. Never nag the owner about these.
+# Matched case-insensitively as a substring of the lead name.
+_JUNK_NAME_MARKERS = (
+    "wireless caller",
+    "wrong number",
+    "unknown caller",
+    "unknown name",
+    "spam",
+    "scam",
+    "no caller id",
+    "restricted",
+    "unavailable",
+    "anonymous",
+    "robocall",
+    "telemarket",
+)
+
+
+def _looks_junk(name) -> bool:
+    blob = str(name or "").strip().lower()
+    if not blob:
+        return False
+    return any(marker in blob for marker in _JUNK_NAME_MARKERS)
 
 # Substrings that, if present in a lead's tags or status, mean someone already
 # reached out. Matched case-insensitively. Kept generous so a label drift does not
@@ -301,6 +332,9 @@ def evaluate(ctx):
                 if not _is_recent(created, now):
                     continue
                 if _looks_contacted(lead.get("contacted_text", "")):
+                    continue
+                # Never nag about wrong-number / spam / placeholder leads.
+                if _looks_junk(lead.get("name")):
                     continue
 
                 lead_id = lead.get("id")
