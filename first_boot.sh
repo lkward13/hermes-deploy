@@ -34,6 +34,16 @@ cd "${HERMES_HOME}"
 sudo -u "${HERMES_USER}" git fetch origin "${HERMES_DEPLOY_REF:-main}" 2>&1 || echo "[first-boot] WARN: git fetch failed (probably first-boot offline); continuing with snapshot version"
 sudo -u "${HERMES_USER}" git reset --hard "origin/${HERMES_DEPLOY_REF:-main}" 2>&1 || true
 
+# Mark this VPS as NoDesk-managed so the stock `hermes update` (CLI, the
+# /update chat command, and the TUI confirm) refuses. That updater resets the
+# checkout to the fork's main branch (plain upstream, none of the nodesk_*
+# product code) and strips the whole product; the agent is advanced only by the
+# supervised weekly tag-pinning auto-updater. Distinct from is_managed() so it
+# never blocks config writes (the app's Settings persist through save_config()).
+# Idempotent: the marker's presence is all that matters; content is ignored.
+echo "[first-boot] Marking agent as NoDesk-managed (disables manual self-update)"
+sudo -u "${HERMES_USER}" touch "${HERMES_HOME}/.nodesk_managed"
+
 # Render customer-specific values into .env.
 # render_templates.py reads env vars (set inline by the calling SSH session)
 # and writes .env, SOUL.md, config.yaml, etc. with those values substituted.
