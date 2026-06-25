@@ -14,13 +14,30 @@ This is the agent's opening move on a brand-new install. The agent IS the produc
 
 ## When this skill activates
 
-Activate on the **first message of a fresh agent**, signaled by any of:
+This is the cold open, run **exactly once per agent, ever**, NOT once per chat. A
+new or empty chat is normal: every chat starts empty. An empty conversation, "no
+prior assistant turn," or a fresh chat are NOT, on their own, a first run.
 
-- The app/gateway flags onboarding (a first-run state flag, an `onboarding` intent, or an empty conversation history on a newly provisioned VPS).
-- `$HERMES_HOME/opener.json` exists and has not yet been delivered.
-- The owner has never been greeted (no prior assistant turn).
+**The ONLY first-run signal is a durable per-agent marker. Before doing anything
+else, check it:**
 
-If the conversation is already underway (the owner has been greeted, or is mid-task), do NOT run this skill. This is the cold open, once.
+```bash
+test -f "$HERMES_HOME/onboarding_done.json" && echo DONE || echo FIRST_RUN
+```
+
+- If it prints **DONE** (the file exists), this agent has already onboarded. Do
+  NOT run this skill. Greet the owner normally and help with whatever they asked.
+  Stop here.
+- If it prints **FIRST_RUN** and `$HERMES_HOME/opener.json` exists, this is the
+  genuine first run. **Immediately write the marker FIRST** (so this can never
+  fire twice, even if the cold open is interrupted), then proceed:
+
+```bash
+printf '{"onboarded_at": %s}\n' "$(date +%s)" > "$HERMES_HOME/onboarding_done.json"
+```
+
+Never re-onboard a returning owner just because they opened a new chat. If the
+conversation is already underway (mid-task), also do NOT run this skill.
 
 ## The one file you read: `opener.json`
 
