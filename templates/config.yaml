@@ -1,16 +1,20 @@
 model:
-  default: {{CODEX_MODEL}}
-  provider: openai-codex
-  base_url: https://chatgpt.com/backend-api/codex
+  default: {{MODEL_DEFAULT}}
+  provider: {{MODEL_PROVIDER}}
+  base_url: {{MODEL_BASE_URL}}
 providers: {}
-# Loaner brain: when the primary (openai-codex = the customer's ChatGPT) can't
-# authenticate (a new/trial agent that hasn't connected ChatGPT yet), the agent
-# falls through to gpt-4o-mini on the shared NoDesk OPENAI_API_KEY so it can still
-# think and run the onboarding. A connected customer never hits this (no cost),
-# except as resilience if their ChatGPT hiccups.
+# Loaner brain. A brand-new agent that hasn't connected ChatGPT yet runs its
+# PRIMARY model on the shared NoDesk OpenAI API key (openai-api / gpt-5.4-mini)
+# so it can reply and run onboarding immediately. When the customer connects
+# their own ChatGPT, NoDesk's credential_sync re-renders this block with
+# provider: openai-codex (their account) and the openai-api line below becomes a
+# resilience fallback (used only if their ChatGPT hiccups). For a loaner agent
+# the primary IS openai-api, so the fallback is the same brain (harmless).
+# NEVER use gpt-4o-mini here: that model is deprecated and returns EMPTY replies,
+# which is what made the original loaner brain silently dead.
 fallback_providers:
-  - provider: openai
-    model: gpt-4o-mini
+  - provider: {{FALLBACK_PROVIDER}}
+    model: {{FALLBACK_MODEL}}
 credential_pool_strategies: {}
 toolsets:
 - hermes-cli
@@ -94,9 +98,9 @@ compression:
   # the moment a conversation is long enough to compress, which corrupts the
   # session (a completed reply vanishes on reopen). Keep this on the Codex model.
   # (Migrates to auxiliary.compression.{provider,model} at config v27.)
-  summary_model: gpt-5.4-mini
-  summary_provider: openai-codex
-  summary_base_url: null
+  summary_model: {{MODEL_DEFAULT}}
+  summary_provider: {{MODEL_PROVIDER}}
+  summary_base_url: {{MODEL_BASE_URL}}
 # Image / scanned-PDF understanding runs on a separate "auxiliary vision" model.
 # Left on `auto` it resolves (same chain as compression) to a non-Codex helper
 # the customer's ChatGPT/Codex account can't authenticate, so vision silently
@@ -105,8 +109,8 @@ compression:
 # without relying on the migration.
 auxiliary:
   vision:
-    provider: openai-codex
-    model: gpt-5.4-mini
+    provider: {{MODEL_PROVIDER}}
+    model: {{MODEL_DEFAULT}}
 prompt_caching:
   cache_ttl: 5m
 display:
