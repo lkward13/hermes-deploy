@@ -105,11 +105,43 @@ DEFAULTS = {
     "GH_TOKEN": "",
     "OPENAI_API_KEY": "",
     "IMAGE_GEN_PROVIDER": "openai-codex",
+    # Brain selection. These DEFAULTS reproduce the OLD hardcoded codex-primary
+    # model block, so an ENV-LESS render is a pure no-op (only the broken
+    # fallback below is fixed). That matters because the only env-less render in
+    # practice is the existing fleet's nightly `--templates-only` pull, which
+    # sources a pre-MODEL_* .env -> these defaults; that fleet is all
+    # codex-connected, so defaulting to the loaner here would flip a paying
+    # customer onto the shared key. A FRESH provision never hits these: first_boot
+    # renders with `sudo -E`, so build_bootstrap_env's MODEL_* (openai-api loaner
+    # when no ChatGPT, openai-codex once connected) are in os.environ AND written
+    # into .env, so every later render reads the real values. The fallback default
+    # is the only change vs the old block: openai-api/gpt-5.4-mini (a WORKING chat
+    # brain) instead of the old openai/gpt-4o-mini (invalid provider + deprecated
+    # model that returned empty replies).
+    "MODEL_PROVIDER": "openai-codex",
+    "MODEL_DEFAULT": "gpt-5.4-mini",
+    "MODEL_BASE_URL": "https://chatgpt.com/backend-api/codex",
+    "FALLBACK_PROVIDER": "openai-api",
+    "FALLBACK_MODEL": "gpt-5.4-mini",
 }
 
 
-def render(text: str) -> str:
-    values = DEFAULTS | os.environ
+def _effective_values() -> dict:
+    values = DEFAULTS | dict(os.environ)
+    # Back-compat for the existing fleet: their .env predates MODEL_DEFAULT, and
+    # their chosen model lives in CODEX_MODEL. On a nightly `--templates-only`
+    # render (no NoDesk env, sources the old .env), inherit CODEX_MODEL so we
+    # keep the customer's chosen model instead of resetting model.default to the
+    # gpt-5.4-mini DEFAULT. A fresh provision always sets MODEL_DEFAULT explicitly
+    # (build_bootstrap_env), so this only fires for pre-MODEL_* boxes.
+    if "MODEL_DEFAULT" not in os.environ and os.environ.get("CODEX_MODEL"):
+        values["MODEL_DEFAULT"] = os.environ["CODEX_MODEL"]
+    return values
+
+
+def render(text: str, values: dict | None = None) -> str:
+    if values is None:
+        values = _effective_values()
     for key, value in values.items():
         text = text.replace("{{" + key + "}}", str(value))
     return text

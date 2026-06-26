@@ -47,9 +47,15 @@ sudo -u "${HERMES_USER}" touch "${HERMES_HOME}/.nodesk_managed"
 # Render customer-specific values into .env.
 # render_templates.py reads env vars (set inline by the calling SSH session)
 # and writes .env, SOUL.md, config.yaml, etc. with those values substituted.
+# CRITICAL: pass -E so `sudo -u hermes` PRESERVES the calling session's env.
+# Without it, sudo resets the environment to the hermes user's login defaults
+# and render sees only HERMES_HOME -> every customer value (OPENAI_API_KEY,
+# MODEL_*, BUSINESS_NAME, tokens...) renders to its empty/DEFAULT, which is what
+# left fresh agents with an empty loaner key and a broken brain. -E keeps the
+# inline env so render writes the real values; files stay hermes-owned (-u).
 echo "[first-boot] Rendering customer templates"
 export HERMES_HOME
-sudo -u "${HERMES_USER}" HERMES_HOME="${HERMES_HOME}" python3 "${HERMES_HOME}/scripts/render_templates.py"
+sudo -E -u "${HERMES_USER}" HERMES_HOME="${HERMES_HOME}" python3 "${HERMES_HOME}/scripts/render_templates.py"
 
 # Per-customer crontab jobs. Lifted from bootstrap.sh tail, with the
 # pipefail-tolerant crontab merge from commit 0f8fa18.
