@@ -210,6 +210,13 @@ logging:
   level: INFO
   max_size_mb: 5
   backup_count: 3
+gateway:
+  # Per-message timestamps: stamp each user message with its send time so the
+  # agent is time-aware (it can reason about when you wrote, e.g. "you asked 3
+  # days ago"), and the mobile app shows per-bubble times on reopened chats.
+  # Content the model sees stays clean; the time rides as metadata.
+  message_timestamps:
+    enabled: true
 model_catalog:
   enabled: true
   url: https://hermes-agent.nousresearch.com/docs/api/model-catalog.json
