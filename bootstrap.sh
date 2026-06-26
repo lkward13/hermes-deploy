@@ -152,6 +152,15 @@ if [[ -d "${HERMES_HOME}/hermes-agent/web" ]]; then
     || echo "[hermes-bootstrap] WARNING: web_dist build failed; remote dashboard will not serve until built"
 fi
 
+# Computer-use stack (headless desktop + cua-driver). Baked into the snapshot so
+# the agent can drive a real GUI (the no-API hammer). The cua-driver MCP server
+# itself is enabled via templates/config.yaml's mcp_servers block. Non-fatal.
+echo "[hermes-bootstrap] Installing computer-use stack (headless desktop + cua-driver)"
+if [[ -f "${HERMES_HOME}/scripts/install_computer_use.sh" ]]; then
+  HERMES_USER="${HERMES_USER}" bash "${HERMES_HOME}/scripts/install_computer_use.sh" 2>&1 | tail -4 \
+    || echo "[hermes-bootstrap] WARNING: computer-use install failed (non-fatal)"
+fi
+
 echo "[hermes-bootstrap] Adding hermes venv to system PATH"
 HERMES_BIN="${HERMES_HOME}/hermes-agent/venv/bin"
 cat >"/etc/profile.d/hermes.sh" <<PROFILE

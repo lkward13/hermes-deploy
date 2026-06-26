@@ -217,6 +217,21 @@ gateway:
   # Content the model sees stays clean; the time rides as metadata.
   message_timestamps:
     enabled: true
+mcp_servers:
+  # Linux computer-use: lets the agent drive a real desktop GUI (the no-API
+  # hammer for fingerprint-gated web UIs / legacy desktop apps). The cua-driver
+  # binary + the headless desktop (Xvfb :99 + dbus + at-spi + openbox) are
+  # installed by scripts/install_computer_use.sh and baked into the snapshot.
+  # Runs on the agent's Codex sub; the agent only escalates here after the API
+  # and browser tiers can't do the job (cost-ordered).
+  cua-driver:
+    command: /home/hermes/.local/bin/cua-driver
+    args:
+    - mcp
+    env:
+      DISPLAY: ":99"
+      DBUS_SESSION_BUS_ADDRESS: "unix:path=/tmp/cua_bus"
+    enabled: true
 model_catalog:
   enabled: true
   url: https://hermes-agent.nousresearch.com/docs/api/model-catalog.json
