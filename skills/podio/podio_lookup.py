@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-Look up leads/jobs in the configured Podio app.
+Read from Podio: any app's items, a single item in full, and the apps
+available in the workspace/org.
+
+The default app (PODIO_APP_ID) is the leads/jobs app, but --app targets any
+app so the agent can read across the whole Podio account.
 
 Usage:
     python3 podio_lookup.py --search "Devin Burchett"
@@ -9,6 +13,16 @@ Usage:
     python3 podio_lookup.py --list-recent --limit 20
     python3 podio_lookup.py --search "Devin" --json
     python3 podio_lookup.py --update-status 3303283090 "Invoice Sent"
+
+    # Any-app reads (override the default leads app)
+    python3 podio_lookup.py --app 12345678 --list-recent
+    python3 podio_lookup.py --app 12345678 --search "Acme"
+
+    # Read one item fully (all fields, comments count, link)
+    python3 podio_lookup.py --get-item 3303283090
+
+    # Discover app IDs in the workspace / org
+    python3 podio_lookup.py --list-apps
 """
 
 import argparse
@@ -176,6 +190,26 @@ def _api_put(url: str, payload) -> dict:
     return resp
 
 
+def _api_get(url: str, params: dict | None = None) -> dict:
+    """GET from Podio API with automatic token refresh on 401."""
+    resp = requests.get(url, params=params, headers=_headers(), timeout=TIMEOUT)
+    if resp.status_code == 401:
+        new_token = _refresh_oauth_token()
+        if new_token:
+            resp = requests.get(url, params=params, headers=_headers(new_token), timeout=TIMEOUT)
+    return resp
+
+
+def _api_delete(url: str) -> dict:
+    """DELETE to Podio API with automatic token refresh on 401."""
+    resp = requests.delete(url, headers=_headers(), timeout=TIMEOUT)
+    if resp.status_code == 401:
+        new_token = _refresh_oauth_token()
+        if new_token:
+            resp = requests.delete(url, headers=_headers(new_token), timeout=TIMEOUT)
+    return resp
+
+
 def _normalize_phone(raw: str) -> str:
     digits = re.sub(r"\D", "", raw)
     if len(digits) == 10:
@@ -235,6 +269,63 @@ def _parse_item(item: dict) -> dict:
     return result
 
 
+def _parse_item_generic(item: dict) -> dict:
+    """Schema-agnostic parse: extract every field by its external_id + label.
+
+    Used for any app other than the configured leads app, where the FIELDS map
+    does not apply.
+    """
+    fields = []
+    for field in item.get("fields", []):
+        fields.append({
+            "field_id": field.get("field_id"),
+            "external_id": field.get("external_id", ""),
+            "label": field.get("label", ""),
+            "type": field.get("type", ""),
+            "value": _extract_field_value(field),
+        })
+    return {
+        "item_id": item.get("item_id"),
+        "title": item.get("title", ""),
+        "app": (item.get("app") or {}).get("name", ""),
+        "app_id": (item.get("app") or {}).get("app_id"),
+        "fields": fields,
+        "comments": item.get("comment_count", len(item.get("comments", []))),
+        "link": item.get("link", ""),
+    }
+
+
+def get_item(item_id: int) -> dict | None:
+    """Read a single item fully, regardless of which app it belongs to."""
+    resp = _api_get(f"{PODIO_API}/item/{item_id}")
+    if resp.status_code != 200:
+        print(f"Error reading item {item_id} ({resp.status_code}): {resp.text}", file=sys.stderr)
+        return None
+    return _parse_item_generic(resp.json())
+
+
+def list_apps() -> list[dict]:
+    """List apps the authenticated user can see, grouped for app-ID discovery."""
+    resp = _api_get(f"{PODIO_API}/app/")
+    if resp.status_code != 200:
+        print(f"Error listing apps ({resp.status_code}): {resp.text}", file=sys.stderr)
+        return []
+    apps = []
+    for app in resp.json():
+        cfg = app.get("config", {}) or {}
+        space = app.get("space", {}) or {}
+        apps.append({
+            "app_id": app.get("app_id"),
+            "name": cfg.get("name") or app.get("name", ""),
+            "item_name": cfg.get("item_name", ""),
+            "space": space.get("name", ""),
+            "space_id": app.get("space_id") or space.get("space_id"),
+            "status": app.get("status", ""),
+            "link": app.get("link", ""),
+        })
+    return apps
+
+
 def _is_phone_query(query: str) -> bool:
     return bool(re.match(r"^[\+\d\(\)\-\s]{7,}$", query.strip()))
 
@@ -253,15 +344,16 @@ def _phone_variants(query: str) -> list[str]:
     return list(variants)
 
 
-def _fetch_all_items(limit: int = 100) -> list[dict]:
+def _fetch_all_items(limit: int = 100, app_id: int | None = None) -> list[dict]:
     """Fetch items from the app (paginated if needed) for client-side filtering."""
+    app_id = app_id or APP_ID
     all_items = []
     offset = 0
     batch_size = min(limit, 100)
 
     while offset < limit:
         resp = _api_post(
-            f"{PODIO_API}/item/app/{APP_ID}/filter/",
+            f"{PODIO_API}/item/app/{app_id}/filter/",
             {
                 "sort_by": "created_on",
                 "sort_desc": True,
@@ -282,16 +374,19 @@ def _fetch_all_items(limit: int = 100) -> list[dict]:
     return all_items
 
 
-def search_items(query: str) -> list[dict]:
-    """Search by name or phone."""
+def search_items(query: str, app_id: int | None = None) -> list[dict]:
+    """Search by name or phone (default leads app) or by text (any app)."""
+    app_id = app_id or APP_ID
+    is_default_app = app_id == APP_ID
+    parse = _parse_item if is_default_app else _parse_item_generic
     results = []
 
     if _is_phone_query(query):
         variants = _phone_variants(query)
-        items = _fetch_all_items(limit=200)
+        items = _fetch_all_items(limit=200, app_id=app_id)
         for item in items:
-            parsed = _parse_item(item)
-            item_phone_digits = re.sub(r"\D", "", parsed["phone"])
+            parsed = parse(item)
+            item_phone_digits = re.sub(r"\D", "", _item_phone(parsed))
             for v in variants:
                 v_digits = re.sub(r"\D", "", v)
                 if v_digits and item_phone_digits and (
@@ -302,22 +397,24 @@ def search_items(query: str) -> list[dict]:
                     results.append(parsed)
                     break
     else:
-        resp = _api_post(
-            f"{PODIO_API}/item/app/{APP_ID}/filter/",
-            {
-                "filters": {str(FIELDS["name"]): query},
-                "limit": 20,
-                "sort_by": "created_on",
-                "sort_desc": True,
-            },
-        )
-        if resp.status_code == 200:
-            items = resp.json().get("items", [])
-            results.extend(_parse_item(i) for i in items)
+        # The field-id name filter only exists in the known leads app schema.
+        if is_default_app:
+            resp = _api_post(
+                f"{PODIO_API}/item/app/{app_id}/filter/",
+                {
+                    "filters": {str(FIELDS["name"]): query},
+                    "limit": 20,
+                    "sort_by": "created_on",
+                    "sort_desc": True,
+                },
+            )
+            if resp.status_code == 200:
+                items = resp.json().get("items", [])
+                results.extend(parse(i) for i in items)
 
         if not results:
             resp = _api_post(
-                f"{PODIO_API}/search/app/{APP_ID}/",
+                f"{PODIO_API}/search/app/{app_id}/",
                 {"query": query, "limit": 20, "ref_type": "item"},
             )
             if resp.status_code == 200:
@@ -325,13 +422,9 @@ def search_items(query: str) -> list[dict]:
                 search_results = search_data if isinstance(search_data, list) else search_data.get("results", [])
                 item_ids = [r.get("id") for r in search_results if r.get("id")]
                 for iid in item_ids[:10]:
-                    item_resp = requests.get(
-                        f"{PODIO_API}/item/{iid}",
-                        headers=_headers(),
-                        timeout=TIMEOUT,
-                    )
+                    item_resp = _api_get(f"{PODIO_API}/item/{iid}")
                     if item_resp.status_code == 200:
-                        results.append(_parse_item(item_resp.json()))
+                        results.append(parse(item_resp.json()))
 
     seen = set()
     deduped = []
@@ -342,9 +435,21 @@ def search_items(query: str) -> list[dict]:
     return deduped
 
 
-def list_recent(limit: int = 10) -> list[dict]:
+def _item_phone(parsed: dict) -> str:
+    """Pull a phone value out of either a leads-parsed or generic-parsed item."""
+    if parsed.get("phone"):
+        return parsed["phone"]
+    for f in parsed.get("fields", []):
+        if f.get("type") == "phone":
+            return f.get("value", "")
+    return ""
+
+
+def list_recent(limit: int = 10, app_id: int | None = None) -> list[dict]:
+    app_id = app_id or APP_ID
+    parse = _parse_item if app_id == APP_ID else _parse_item_generic
     resp = _api_post(
-        f"{PODIO_API}/item/app/{APP_ID}/filter/",
+        f"{PODIO_API}/item/app/{app_id}/filter/",
         {
             "sort_by": "created_on",
             "sort_desc": True,
@@ -355,7 +460,7 @@ def list_recent(limit: int = 10) -> list[dict]:
         print(f"Error listing items ({resp.status_code}): {resp.text}", file=sys.stderr)
         return []
     items = resp.json().get("items", [])
-    return [_parse_item(i) for i in items]
+    return [parse(i) for i in items]
 
 
 def update_item_status(item_id: int, status_text: str) -> bool:
@@ -394,13 +499,50 @@ def print_lead(lead: dict, index: int = None):
     print()
 
 
+def print_generic_item(item: dict, index: int = None):
+    prefix = f"[{index}] " if index is not None else ""
+    print(f"{prefix}{item.get('title') or '(untitled)'}")
+    if item.get("app"):
+        print(f"    App:      {item['app']}" + (f" ({item['app_id']})" if item.get('app_id') else ""))
+    for f in item.get("fields", []):
+        label = f.get("label") or f.get("external_id") or f.get("field_id")
+        val = f.get("value")
+        if val in (None, "", []):
+            continue
+        print(f"    {label}: {val}")
+    if item.get("comments"):
+        print(f"    Comments: {item['comments']}")
+    print(f"    Item ID:  {item.get('item_id')}")
+    if item.get("link"):
+        print(f"    Link:     {item['link']}")
+    print()
+
+
+def print_app(app: dict, index: int = None):
+    prefix = f"[{index}] " if index is not None else ""
+    print(f"{prefix}{app.get('name') or '(unnamed app)'}  (app_id {app.get('app_id')})")
+    if app.get("space"):
+        print(f"    Space:    {app['space']}" + (f" ({app['space_id']})" if app.get('space_id') else ""))
+    if app.get("item_name"):
+        print(f"    Items:    {app['item_name']}")
+    if app.get("status"):
+        print(f"    Status:   {app['status']}")
+    print()
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Search configured Podio leads/jobs",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--search", "-s", help="Search by customer name or phone number")
-    parser.add_argument("--list-recent", "-l", action="store_true", help="List recent leads")
+    parser.add_argument("--list-recent", "-l", action="store_true", help="List recent items")
+    parser.add_argument("--get-item", "-g", metavar="ITEM_ID", help="Read a single item fully")
+    parser.add_argument("--list-apps", action="store_true", help="List apps available in the workspace/org")
+    parser.add_argument(
+        "--app", "-a", type=int, metavar="APP_ID",
+        help="Target any app by ID (defaults to PODIO_APP_ID, the leads/jobs app)",
+    )
     parser.add_argument("--limit", type=int, default=10, help="Number of results (default 10)")
     parser.add_argument("--json", "-j", action="store_true", dest="output_json", help="Output raw JSON")
     parser.add_argument(
@@ -409,9 +551,37 @@ def main():
     )
     args = parser.parse_args()
 
-    if not args.search and not args.list_recent and not args.update_status:
+    if not (args.search or args.list_recent or args.update_status
+            or args.get_item or args.list_apps):
         parser.print_help()
         sys.exit(1)
+
+    # Whether we are reading the configured leads app or an arbitrary one.
+    target_app = args.app or APP_ID
+    is_default_app = target_app == APP_ID
+
+    if args.list_apps:
+        apps = list_apps()
+        if not apps:
+            print("No apps found.")
+            return
+        if args.output_json:
+            print(json.dumps(apps, indent=2))
+        else:
+            print(f"Apps ({len(apps)}):\n")
+            for i, app in enumerate(apps, 1):
+                print_app(app, i)
+        return
+
+    if args.get_item:
+        item = get_item(int(args.get_item))
+        if not item:
+            sys.exit(1)
+        if args.output_json:
+            print(json.dumps(item, indent=2))
+        else:
+            print_generic_item(item)
+        return
 
     if args.update_status:
         item_id, status_text = args.update_status
@@ -419,29 +589,37 @@ def main():
         sys.exit(0 if success else 1)
 
     if args.list_recent:
-        leads = list_recent(args.limit)
+        leads = list_recent(args.limit, app_id=target_app)
         if not leads:
-            print("No leads found.")
+            print("No items found.")
             return
         if args.output_json:
             print(json.dumps(leads, indent=2))
-        else:
+        elif is_default_app:
             print(f"Recent leads ({len(leads)}):\n")
             for i, lead in enumerate(leads, 1):
                 print_lead(lead, i)
+        else:
+            print(f"Recent items in app {target_app} ({len(leads)}):\n")
+            for i, item in enumerate(leads, 1):
+                print_generic_item(item, i)
         return
 
     if args.search:
-        leads = search_items(args.search)
+        leads = search_items(args.search, app_id=target_app)
         if not leads:
-            print(f"No leads found matching: {args.search}")
+            print(f"No items found matching: {args.search}")
             return
         if args.output_json:
             print(json.dumps(leads, indent=2))
-        else:
+        elif is_default_app:
             print(f"Found {len(leads)} lead(s) matching '{args.search}':\n")
             for i, lead in enumerate(leads, 1):
                 print_lead(lead, i)
+        else:
+            print(f"Found {len(leads)} item(s) matching '{args.search}':\n")
+            for i, item in enumerate(leads, 1):
+                print_generic_item(item, i)
 
 
 if __name__ == "__main__":
