@@ -58,7 +58,23 @@ def main():
     parser.add_argument("--to", required=True, help="Destination phone number (E.164 format)")
     parser.add_argument("--body", required=True, help="Message body")
     parser.add_argument("--from", dest="from_number", default=CLICKSEND_FROM, help="Sender number")
+    parser.add_argument(
+        "--respect-quiet-hours",
+        action="store_true",
+        help="LEAD texts only: refuse to send outside the tenant's local texting "
+             "window (see quiet_hours.py). Do NOT pass this for owner/admin "
+             "notifications — those are exempt and must always go through.",
+    )
     args = parser.parse_args()
+
+    if args.respect_quiet_hours:
+        # Hard guard: a lead-facing text during quiet hours never leaves the box,
+        # even if the LLM forgot to check. Owner notifications skip this flag.
+        from quiet_hours import text_ok_now
+        ok, info = text_ok_now()
+        if not ok:
+            print(json.dumps({"sent": False, "reason": "quiet_hours", **info}))
+            return 2
 
     body = args.body.replace("\\n", "\n")
     result = send_sms(args.to, body, args.from_number)
